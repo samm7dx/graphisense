@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+.venv/
+venv/
+
+# Dataset - keep local
+data/raw/
+
+# Generated files
+data/processed/
+outputs/
+
+# OS
+.DS_Store
+Thumbs.db
