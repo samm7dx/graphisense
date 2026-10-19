@@ -6,3 +6,5 @@ scikit-learn
 scipy
 jupyter
 ipykernel
+streamlit
+pytest
