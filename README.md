@@ -18,7 +18,7 @@ GraphiSense is an experimental academic research prototype designed to investiga
 
 ## Technologies & Stack
 
-- **Language & Runtime**: Python 3.10+ (tested on Python 3.10 and 3.14)
+- **Language & Runtime**: Python 3.10 or newer. The repository workflow has been checked on Python 3.13.15; other Python versions should be verified in their own environments.
 - **Computer Vision & Image Processing**: OpenCV (`opencv-python`), NumPy
 - **Machine Learning & Pipeline**: Scikit-Learn, SciPy
 - **Data Engineering**: Pandas
@@ -38,7 +38,8 @@ graphisense/
 ├── data/
 │   ├── raw/                     # Raw image storage (dataset excluded via .gitignore)
 │   │   ├── README.md            # Dataset placement instructions
-│   │   └── handwriting/         # Local dataset extraction directory (git-ignored)
+│   │   ├── Potential Dysgraphia/ # Local class folder (git-ignored)
+│   │   └── Low Potential Dysgraphia/ # Local class folder (git-ignored)
 │   └── processed/               # Intermediate preprocessed data
 ├── notebooks/
 │   ├── Stepwise-Guided-Notebook.ipynb  # Exploratory and guided analysis
@@ -60,8 +61,8 @@ graphisense/
 │   │   ├── image_loader.py      # Robust image reading and color conversion
 │   │   └── binarization.py      # Polarity-aware Otsu/Triangle binarization
 │   └── visualization/           # Plotting utilities and visual demos
-├── tests/                       # Automated test suite (51 unit & integration tests)
-├── requirements.txt             # Minimal, reproducible dependencies
+├── tests/                       # Automated unit and integration tests
+├── requirements.txt             # Runtime, test, and notebook dependencies
 └── README.md                    # Project documentation and reproduction guide
 ```
 
@@ -88,89 +89,96 @@ GraphiSense executes an end-to-end, modular computer vision and machine learning
      - *Stroke Width Proxy*: Medial-axis Euclidean distance transform thickness proxy ($2 \times R_{\text{inscribed}}$).
 4. **Model Training & Evaluation** (`src/models/train_evaluate.py`):
    - Evaluates Logistic Regression and Random Forest classifiers using Stratified 5-Fold Cross-Validation.
-   - Leverages `reduced_static_features` (9 scale-invariant spatial ratios and stroke thickness proxies) to avoid confounding from arbitrary image crop dimensions.
+   - Uses `reduced_static_features` (9 spatial ratios and pixel-unit stroke thickness proxies) rather than raw crop dimensions for the primary model.
 5. **Deterministic Single-Image Inference** (`src/models/inference.py`):
    - Loads the serialized Random Forest pipeline artifact (`outputs/models/model_pipeline.joblib`) and metadata schema (`outputs/models/model_metadata.json`).
    - Performs inference without fitting or altering model weights.
-   - Provides calibrated class probability distribution mapped to `LPD` and `PD`.
+   - Provides model class-probability estimates mapped to `LPD` and `PD`.
 6. **Interactive Application Interface** (`app/main.py`):
    - Streamlit dashboard providing image upload and verified dataset sample inspection.
-   - Displays side-by-side original and binarized masks, detected polarity, primary metrics, probability distributions, and full metadata schemas.
+   - Displays side-by-side original and binarized masks, detected polarity, feature summaries, probability distributions, and selected model metadata.
 
 ---
 
 ## Installation & Setup (Windows PowerShell)
 
 ### 1. Prerequisites
-Ensure Python 3.10, 3.11, 3.12, or 3.14 is installed on your system.
+Install Python 3.10 or newer. Use the Python launcher (`py`) to select the interpreter.
 
 ### 2. Environment Setup
-Open Windows PowerShell and navigate to the project directory:
+Open Windows PowerShell in the repository root and create a project-local virtual environment:
 
 ```powershell
-# Navigate to the project directory
-cd <path-to-graphisense>
-
-# Create a virtual environment (optional if using an existing one)
-python -m venv .venv
-
-# Activate the virtual environment in PowerShell
+py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
-# Upgrade pip
 python -m pip install --upgrade pip
-
-# Install required dependencies
 python -m pip install -r requirements.txt
 ```
 
-### 3. Verify Imports
-Verify that all core libraries import without error:
+If PowerShell blocks activation, allow it for the current terminal only and activate again:
 
 ```powershell
-python -c "import cv2, numpy, pandas, matplotlib, scipy, sklearn, streamlit, pytest; print('All required libraries imported successfully!')"
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
 ```
 
----
+### 3. Download and place the dataset
 
-## Running Automated Tests
-
-Run the full automated test suite using `pytest`:
+The dataset is not included in this repository. Download it from the [Mendeley Data record](https://data.mendeley.com/datasets/39hr8dx76p/1) and review the provider's terms before use. Then extract the downloaded ZIP so both class folders are directly inside the expected dataset directory:
 
 ```powershell
-# Run complete test suite with detailed output
-python -m pytest tests/ -v
+$datasetZip = Read-Host "Enter the full path to the downloaded Mendeley dataset ZIP"
+$datasetRoot = Join-Path $PWD "data\raw"
+if (-not (Test-Path -LiteralPath $datasetZip -PathType Leaf)) { throw "Dataset ZIP not found: $datasetZip" }
+New-Item -ItemType Directory -Force -Path $datasetRoot
+Expand-Archive -LiteralPath $datasetZip -DestinationPath $datasetRoot
+Get-ChildItem -Path $datasetRoot
+```
 
-# Run tests with summary report
+The resulting layout must be:
+
+```text
+data\raw\
+├── Potential Dysgraphia\
+└── Low Potential Dysgraphia\
+```
+
+If the ZIP contains an extra enclosing directory, move the two class folders so they sit directly under `$datasetRoot`. The raw dataset path is ignored by Git; do not add the dataset to commits.
+
+### 4. Generate features and train the model
+
+From the repository root with `.venv` activated, run:
+
+```powershell
+python -m src.features.build_feature_dataset
+python -m src.features.analyze_features
+python -m src.models.train_evaluate
+```
+
+Feature extraction writes `outputs\features\features.csv`. The analysis and model-evaluation commands create the expected reports and figures. The model-evaluation command also trains the final Random Forest and saves:
+
+```powershell
+outputs\models\model_pipeline.joblib
+outputs\models\model_metadata.json
+```
+
+Feature generation requires both class folders and supported images in each. Training and evaluation stop with an actionable error if the feature CSV is missing, contains failed rows, has missing or invalid feature values, or does not include both classes.
+
+### 5. Run automated tests
+
+```powershell
 python -m pytest tests/ -q
 ```
 
-The test suite covers:
-- Image loading, channel normalization, and invalid file handling (`tests/test_image_loader.py`)
-- Polarity detection, thresholding methods, and mask invariants (`tests/test_binarization.py`)
-- Synthetic geometric verification, noise component filtering, and CSV integrity (`tests/test_features.py`)
-- Statistical distribution analysis, Cliff's delta, and FDR bounds (`tests/test_analysis.py`)
-- Model pipeline construction, CV reproducibility, and metric bounds (`tests/test_models.py`)
-- Deterministic inference, metadata schema validation, and corrupt artifact handling (`tests/test_inference.py`)
-- Application pipeline handler, byte decoding, polarity modes, and error paths (`tests/test_app.py`)
+Tests that require the external dataset or generated model/report artifacts are skipped when those files are unavailable. Synthetic preprocessing, input-validation, schema, and model tests can run without downloading the dataset.
 
----
-
-## Launching the Web Application
-
-Launch the local Streamlit application:
-
-```powershell
-streamlit run app/main.py
-```
-
-Or invoke via Python module:
+### 6. Launch the web application
 
 ```powershell
 python -m streamlit run app/main.py
 ```
 
-Once launched, open your web browser at `http://localhost:8501`.
+Open [http://localhost:8501](http://localhost:8501) in your browser. Uploads are limited to JPG/JPEG/PNG in the interface. The model must be trained as described above to complete predictions.
 
 ---
 
@@ -183,7 +191,7 @@ from pathlib import Path
 from src.models.inference import predict_handwriting
 
 # Provide path to an image file (.jpg, .png, etc.)
-image_file = Path("data/raw/handwriting/extracted/DATASET DYSGRAPHIA HANDWRITING/Potential Dysgraphia/PD (1).jpg")
+image_file = Path("data/raw/Potential Dysgraphia/PD (1).jpg")
 
 # Execute deterministic inference
 result = predict_handwriting(image_file)
@@ -195,19 +203,16 @@ print("Key Features Used:", result["features_used"])
 
 ---
 
-## Dataset Organization & Setup
+## Dataset Attribution and Organization
 
-- **Source**: Mendeley Data (*Potential Dysgraphia Handwriting Dataset of School-Age Children*, Ramlan et al., Oct 2023, DOI: [10.17632/39hr8dx76p.1](https://data.mendeley.com/datasets/39hr8dx76p.1)).
-- **Size**: 249 images (114 Potential Dysgraphia `PD`, 135 Low Potential Dysgraphia `LPD`).
-- **Placement**: Extract the downloaded dataset into:
+- **Source**: Mendeley Data, *Potential Dysgraphia Handwriting Dataset of School-Age Children*, Ramlan et al. (Oct 2023), DOI: [10.17632/39hr8dx76p.1](https://data.mendeley.com/datasets/39hr8dx76p.1). Follow the provider's license and attribution requirements.
+- **Placement**: Place the class folders under:
   ```text
-  data/raw/handwriting/extracted/DATASET DYSGRAPHIA HANDWRITING/
+  data\raw\
   ├── Potential Dysgraphia/
-  │   ├── PD (1).jpg
   │   └── ...
   └── Low Potential Dysgraphia/
-      ├── LPD (1).jpg
       └── ...
   ```
 
-Note: Raw handwriting dataset images are excluded from Git version control via `.gitignore`.
+Raw handwriting images and generated outputs are excluded from Git by `.gitignore`. This project is a research screening-support prototype, not a diagnostic tool.

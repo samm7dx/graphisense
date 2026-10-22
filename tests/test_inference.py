@@ -2,8 +2,10 @@
 
 from pathlib import Path
 import json
+import cv2
 import joblib
 import numpy as np
+import pandas as pd
 import pytest
 
 from src.models.inference import (
@@ -12,21 +14,46 @@ from src.models.inference import (
     load_saved_model,
     predict_handwriting,
 )
-from src.models.train_evaluate import REDUCED_STATIC_FEATURES
+from src.features.handwriting_features import extract_handwriting_features
+from src.models.train_evaluate import REDUCED_STATIC_FEATURES, build_pipeline
 
-DATASET_ROOT = Path("data/raw/handwriting/extracted/DATASET DYSGRAPHIA HANDWRITING")
+DATASET_ROOT = Path("data/raw")
 
 
 @pytest.fixture
 def sample_pd_path() -> Path:
     """Fixture returning a valid PD image path."""
-    return next((DATASET_ROOT / "Potential Dysgraphia").glob("*.jpg"))
+    if not DATASET_ROOT.exists():
+        pytest.skip("External handwriting dataset is not installed")
+    if not DEFAULT_MODEL_PATH.is_file() or not DEFAULT_METADATA_PATH.is_file():
+        pytest.skip("Trained model artifacts are not available")
+    sample_path = next((DATASET_ROOT / "Potential Dysgraphia").glob("*.jpg"), None)
+    if sample_path is None:
+        pytest.skip("Potential Dysgraphia sample images are not available")
+    return sample_path
 
 
 @pytest.fixture
 def sample_lpd_path() -> Path:
     """Fixture returning a valid LPD image path."""
-    return next((DATASET_ROOT / "Low Potential Dysgraphia").glob("*.jpg"))
+    if not DATASET_ROOT.exists():
+        pytest.skip("External handwriting dataset is not installed")
+    if not DEFAULT_MODEL_PATH.is_file() or not DEFAULT_METADATA_PATH.is_file():
+        pytest.skip("Trained model artifacts are not available")
+    sample_path = next((DATASET_ROOT / "Low Potential Dysgraphia").glob("*.jpg"), None)
+    if sample_path is None:
+        pytest.skip("Low Potential Dysgraphia sample images are not available")
+    return sample_path
+
+
+@pytest.fixture
+def synthetic_image_path(tmp_path: Path) -> Path:
+    """Return a valid synthetic handwriting image independent of external data."""
+    image = np.zeros((48, 96), dtype=np.uint8)
+    cv2.line(image, (10, 24), (86, 24), 255, 3)
+    path = tmp_path / "synthetic.png"
+    assert cv2.imwrite(str(path), image)
+    return path
 
 
 def test_predict_handwriting_pd_sample(sample_pd_path: Path):
@@ -61,29 +88,42 @@ def test_feature_column_ordering(sample_pd_path: Path):
     assert len(features_used) == len(REDUCED_STATIC_FEATURES)
 
 
-def test_missing_and_corrupt_artifacts(tmp_path: Path, sample_pd_path: Path):
+def test_missing_and_corrupt_artifacts(tmp_path: Path, synthetic_image_path: Path):
     """Verify informative errors on missing or incompatible model artifacts."""
+    valid_model_path = tmp_path / "valid_pipeline.joblib"
+    training_data = pd.DataFrame(
+        np.zeros((2, len(REDUCED_STATIC_FEATURES))),
+        columns=REDUCED_STATIC_FEATURES,
+    )
+    test_model = build_pipeline("random_forest")
+    test_model.fit(training_data, np.array([0, 1]))
+    joblib.dump(test_model, valid_model_path)
+
     # Missing model file
     missing_model = tmp_path / "non_existent_model.joblib"
     with pytest.raises(FileNotFoundError, match="Trained model artifact not found"):
-        predict_handwriting(sample_pd_path, model_path=missing_model)
+        predict_handwriting(synthetic_image_path, model_path=missing_model)
 
     # Missing metadata file
     missing_meta = tmp_path / "non_existent_meta.json"
     with pytest.raises(FileNotFoundError, match="Model metadata file not found"):
-        predict_handwriting(sample_pd_path, metadata_path=missing_meta)
+        predict_handwriting(
+            synthetic_image_path,
+            model_path=valid_model_path,
+            metadata_path=missing_meta,
+        )
 
     # Corrupted metadata JSON
     bad_meta = tmp_path / "bad_meta.json"
     bad_meta.write_text("{ corrupt json ...")
     with pytest.raises(ValueError, match="Failed to parse metadata JSON"):
-        load_saved_model(metadata_path=bad_meta)
+        load_saved_model(model_path=valid_model_path, metadata_path=bad_meta)
 
     # Incompatible metadata schema
     empty_meta = tmp_path / "empty_meta.json"
     empty_meta.write_text(json.dumps({"some_key": "val"}))
     with pytest.raises(ValueError, match="missing required fields"):
-        load_saved_model(metadata_path=empty_meta)
+        load_saved_model(model_path=valid_model_path, metadata_path=empty_meta)
 
     # Corrupt model without predict method
     non_model_file = tmp_path / "invalid_model.joblib"
@@ -119,6 +159,64 @@ def test_unreadable_and_invalid_images(tmp_path: Path):
     corrupt_file.write_text("not an image binary")
     with pytest.raises(IOError, match="failed to decode"):
         predict_handwriting(corrupt_file)
+
+
+def test_prediction_uses_saved_feature_schema(tmp_path: Path, synthetic_image_path: Path):
+    """A saved model and metadata with the nine-feature schema should infer successfully."""
+    image = cv2.imread(str(synthetic_image_path), cv2.IMREAD_GRAYSCALE)
+    features = extract_handwriting_features(
+        image,
+        binarize_kwargs={"method": "otsu", "polarity": "dark_background"},
+    )
+    feature_values = {name: features[name] for name in REDUCED_STATIC_FEATURES}
+    training_data = pd.DataFrame([feature_values, feature_values])
+    model = build_pipeline("random_forest")
+    model.fit(training_data, np.array([0, 1]))
+
+    model_path = tmp_path / "model.joblib"
+    metadata_path = tmp_path / "metadata.json"
+    joblib.dump(model, model_path)
+    metadata_path.write_text(
+        json.dumps({
+            "model_type": "random_forest",
+            "feature_set_name": "reduced_static_features",
+            "feature_names": REDUCED_STATIC_FEATURES,
+            "class_mapping": {"0": "LPD", "1": "PD"},
+        }),
+        encoding="utf-8",
+    )
+
+    result = predict_handwriting(
+        synthetic_image_path,
+        model_path=model_path,
+        metadata_path=metadata_path,
+    )
+    assert list(result["features_used"]) == REDUCED_STATIC_FEATURES
+    assert set(result["class_probabilities"]) == {"PD", "LPD"}
+    assert result["predicted_label"] in {"PD", "LPD"}
+
+
+def test_metadata_rejects_model_feature_count_mismatch(tmp_path: Path):
+    training_data = pd.DataFrame(
+        np.zeros((2, len(REDUCED_STATIC_FEATURES))),
+        columns=REDUCED_STATIC_FEATURES,
+    )
+    model = build_pipeline("random_forest")
+    model.fit(training_data, np.array([0, 1]))
+    model_path = tmp_path / "model.joblib"
+    joblib.dump(model, model_path)
+
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(
+        json.dumps({
+            "model_type": "random_forest",
+            "feature_names": REDUCED_STATIC_FEATURES + ["unexpected_feature"],
+            "class_mapping": {"0": "LPD", "1": "PD"},
+        }),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Model feature count does not match metadata"):
+        load_saved_model(model_path, metadata_path)
 
 
 def test_deterministic_inference(sample_pd_path: Path):

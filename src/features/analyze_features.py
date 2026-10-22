@@ -9,6 +9,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import matplotlib
+
+matplotlib.use("Agg")
+
 # Ensure repository root is on sys.path
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:

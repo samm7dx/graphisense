@@ -23,7 +23,7 @@ from src.preprocessing.binarization import binarize_handwriting
 from src.models.inference import predict_handwriting
 
 
-DATASET_ROOT = _REPO_ROOT / "data" / "raw" / "handwriting" / "extracted" / "DATASET DYSGRAPHIA HANDWRITING"
+DATASET_ROOT = _REPO_ROOT / "data" / "raw"
 
 
 def run_visual_demo(

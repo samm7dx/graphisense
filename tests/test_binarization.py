@@ -10,20 +10,30 @@ from src.preprocessing.binarization import (
     detect_background_is_light,
 )
 
-DATASET_ROOT = Path("data/raw/handwriting/extracted/DATASET DYSGRAPHIA HANDWRITING")
+DATASET_ROOT = Path("data/raw")
 
 
 @pytest.fixture
 def pd_sample_gray() -> np.ndarray:
     """Fixture returning a grayscale image from Potential Dysgraphia."""
-    sample_file = list((DATASET_ROOT / "Potential Dysgraphia").glob("*.jpg"))[0]
+    if not DATASET_ROOT.exists():
+        pytest.skip("External handwriting dataset is not installed")
+    sample_files = list((DATASET_ROOT / "Potential Dysgraphia").glob("*.jpg"))
+    if not sample_files:
+        pytest.skip("Potential Dysgraphia sample images are not available")
+    sample_file = sample_files[0]
     return load_image(sample_file, as_gray=True)
 
 
 @pytest.fixture
 def lpd_sample_gray() -> np.ndarray:
     """Fixture returning a grayscale image from Low Potential Dysgraphia."""
-    sample_file = list((DATASET_ROOT / "Low Potential Dysgraphia").glob("*.jpg"))[0]
+    if not DATASET_ROOT.exists():
+        pytest.skip("External handwriting dataset is not installed")
+    sample_files = list((DATASET_ROOT / "Low Potential Dysgraphia").glob("*.jpg"))
+    if not sample_files:
+        pytest.skip("Low Potential Dysgraphia sample images are not available")
+    sample_file = sample_files[0]
     return load_image(sample_file, as_gray=True)
 
 

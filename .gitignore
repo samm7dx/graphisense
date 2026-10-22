@@ -20,6 +20,8 @@ Thumbs.db
 
 # Dataset
 data/raw/handwriting/
+data/raw/Potential Dysgraphia/
+data/raw/Low Potential Dysgraphia/
 data/raw/*.zip
 
 # Generated outputs

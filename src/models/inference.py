@@ -66,15 +66,15 @@ def load_saved_model(
             "Ensure train_and_save_final_model() has been executed."
         )
 
+    pipeline = joblib.load(m_path)
+    if not hasattr(pipeline, "predict"):
+        raise ValueError(f"Loaded model artifact at {m_path} does not implement required 'predict' method.")
+
     if not meta_path.exists():
         raise FileNotFoundError(
             f"Model metadata file not found at: {meta_path}. "
             "Ensure train_and_save_final_model() has been executed."
         )
-
-    pipeline = joblib.load(m_path)
-    if not hasattr(pipeline, "predict"):
-        raise ValueError(f"Loaded model artifact at {m_path} does not implement required 'predict' method.")
 
     with open(meta_path, "r", encoding="utf-8") as f:
         try:
@@ -82,16 +82,41 @@ def load_saved_model(
         except Exception as exc:
             raise ValueError(f"Failed to parse metadata JSON at {meta_path}: {exc}") from exc
 
+    if not isinstance(metadata, dict):
+        raise ValueError(f"Model metadata at {meta_path} must contain a JSON object.")
+
     required_keys = {"model_type", "feature_names", "class_mapping"}
     missing = required_keys - set(metadata.keys())
     if missing:
         raise ValueError(f"Metadata file is missing required fields: {missing}")
 
-    if not isinstance(metadata.get("feature_names"), list) or len(metadata["feature_names"]) == 0:
-        raise ValueError("Metadata 'feature_names' must be a non-empty list.")
+    feature_names = metadata.get("feature_names")
+    if (
+        not isinstance(feature_names, list)
+        or not feature_names
+        or not all(isinstance(name, str) and name for name in feature_names)
+        or len(set(feature_names)) != len(feature_names)
+    ):
+        raise ValueError(
+            "Metadata 'feature_names' must be a non-empty list of unique, non-empty strings."
+        )
 
-    if not isinstance(metadata.get("class_mapping"), dict) or len(metadata["class_mapping"]) == 0:
-        raise ValueError("Metadata 'class_mapping' must be a non-empty dictionary.")
+    class_mapping = metadata.get("class_mapping")
+    if (
+        not isinstance(class_mapping, dict)
+        or class_mapping.get("0") != "LPD"
+        or class_mapping.get("1") != "PD"
+    ):
+        raise ValueError(
+            "Metadata 'class_mapping' must map '0' to 'LPD' and '1' to 'PD'."
+        )
+
+    model_feature_count = getattr(pipeline, "n_features_in_", None)
+    if model_feature_count is not None and model_feature_count != len(feature_names):
+        raise ValueError(
+            "Model feature count does not match metadata: "
+            f"{model_feature_count} model inputs vs. {len(feature_names)} feature names."
+        )
 
     return pipeline, metadata
 
@@ -110,7 +135,7 @@ def predict_handwriting(
     3. Extracts all static handwriting features.
     4. Selects and orders the exact feature vector expected by the saved model.
     5. Evaluates the fitted pipeline (never retraining or fitting on input).
-    6. Returns predicted label, calibrated model probabilities, and feature values.
+    6. Returns predicted label, model probability estimates, and feature values.
 
     Parameters
     ----------
@@ -163,13 +188,13 @@ def predict_handwriting(
     if file_path.stat().st_size == 0:
         raise ValueError(f"Image file is empty (0 bytes): {file_path}")
 
+    # Validate the image before loading model artifacts so invalid uploads get a useful error.
+    original_img, gray_img = load_image_with_grayscale(file_path)
+
     # 1. Load trained model pipeline and schema metadata
     pipeline, metadata = load_saved_model(
         model_path=model_path, metadata_path=metadata_path
     )
-
-    # 2. Load image and convert to grayscale safely
-    original_img, gray_img = load_image_with_grayscale(file_path)
 
     # 3. Extract static handwriting features
     default_bin_kwargs = {"method": "otsu", "polarity": "dark_background"}

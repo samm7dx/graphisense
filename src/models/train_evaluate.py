@@ -1,13 +1,17 @@
 """Machine learning evaluation pipeline for GraphiSense handwriting classification.
 
 Implements reproducible stratified cross-validation for Logistic Regression and
-Random Forest classifiers across normalized (scale-invariant) and full feature subsets.
+Random Forest classifiers across reduced static and full feature subsets.
 """
 
 import json
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+import matplotlib
+
+matplotlib.use("Agg")
 
 # Ensure repository root is on sys.path
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -86,6 +90,52 @@ FEATURE_SET_B = [
     "stroke_width_median",
     "stroke_width_std",
 ]
+
+
+def load_feature_dataset(csv_path: Union[str, Path]) -> pd.DataFrame:
+    """Load and validate the feature CSV used for evaluation and training."""
+    path = Path(csv_path)
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Feature dataset not found at: {path.resolve()}. "
+            "Run 'python -m src.features.build_feature_dataset' after installing "
+            "dependencies and extracting the dataset."
+        )
+
+    df = pd.read_csv(path)
+    required_columns = {"class_label", "status", *FEATURE_SET_B}
+    missing_columns = sorted(required_columns - set(df.columns))
+    if missing_columns:
+        raise ValueError(f"Feature dataset is missing required columns: {missing_columns}")
+
+    failed_rows = df["status"].ne("SUCCESS")
+    if failed_rows.any():
+        raise ValueError(
+            f"Feature dataset contains {int(failed_rows.sum())} failed image row(s). "
+            "Review the status column and regenerate the dataset before training."
+        )
+
+    labels = set(df["class_label"].dropna())
+    if labels != {"PD", "LPD"}:
+        raise ValueError(
+            "Feature dataset must contain both class labels 'PD' and 'LPD'; "
+            f"found {sorted(labels)}."
+        )
+    class_counts = df["class_label"].value_counts()
+    if int(class_counts.min()) < 5:
+        raise ValueError(
+            "At least 5 successful images per class are required for 5-fold "
+            f"cross-validation; found {class_counts.to_dict()}."
+        )
+
+    numeric_features = df[FEATURE_SET_B].apply(pd.to_numeric, errors="coerce")
+    if not np.isfinite(numeric_features.to_numpy(dtype=float)).all():
+        raise ValueError(
+            "Feature dataset contains missing, non-numeric, or infinite feature "
+            "values. Regenerate the dataset and review failed image rows."
+        )
+
+    return df
 
 
 def build_pipeline(model_type: str, random_state: int = 42) -> Pipeline:
@@ -241,7 +291,7 @@ def run_all_evaluations(
     random_state: int = 42,
 ) -> Dict[str, Any]:
     """Run cross-validation for all 4 configurations: (LR, RF) x (Set A, Set B)."""
-    df = pd.read_csv(csv_path)
+    df = load_feature_dataset(csv_path)
 
     # Encode labels: PD -> 1, LPD -> 0
     y = np.where(df["class_label"] == "PD", 1, 0)
@@ -433,7 +483,7 @@ def generate_model_evaluation_report(
   1. **Logistic Regression**: Linear regularized baseline (`C=1.0`, `solver='lbfgs'`, with `StandardScaler`).
   2. **Random Forest**: Non-linear ensemble baseline (`n_estimators=100`, `max_depth=5`, `min_samples_split=4`).
 - **Evaluated Feature Sets**:
-  - **Feature Set A (Normalized Baseline, 9 features)**: Emphasizes scale-invariant and crop-independent features (`ink_density`, `centroid_x_norm`, `centroid_y_norm`, `active_row_ratio`, `component_aspect_ratio_mean`, `component_aspect_ratio_std`, `stroke_width_mean`, `stroke_width_median`, `stroke_width_std`).
+  - **Feature Set A (Reduced Static Baseline, 9 features)**: Uses spatial ratios and pixel-unit stroke thickness proxies (`ink_density`, `centroid_x_norm`, `centroid_y_norm`, `active_row_ratio`, `component_aspect_ratio_mean`, `component_aspect_ratio_std`, `stroke_width_mean`, `stroke_width_median`, `stroke_width_std`). Stroke thickness depends on capture resolution.
   - **Feature Set B (Full Static Set, 25 features)**: Diagnostic set containing all static features, including raw crop dimensions (`image_width`, `image_height`), raw pixel counts (`foreground_pixels`), and component size distributions.
 
 ---
@@ -451,11 +501,11 @@ The table below presents mean and standard deviation across 5 stratified folds f
 ## 3. Comparison of Models and Feature Sets
 
 1. **Feature Set A vs. Feature Set B**:
-   - Feature Set A relies exclusively on normalized, scale-invariant stroke and density descriptors, preventing the model from exploiting annotator crop boundaries (`image_width`, `image_height`).
+   - Feature Set A excludes raw crop dimensions (`image_width`, `image_height`), but its pixel-unit stroke thickness features remain resolution-dependent and are not fully scale-invariant.
    - Feature Set B includes raw crop dimensions and component counts. Comparing both sets diagnostically reveals the degree to which raw dimensions influence separation.
 2. **Logistic Regression vs. Random Forest**:
    - Random Forest captures non-linear interactions between stroke width variability and ink density.
-   - Logistic Regression provides a transparent linear baseline with well-calibrated probabilities.
+   - Logistic Regression provides a transparent linear baseline; its probability estimates are not calibrated.
 3. **Per-Class Sensitivity**:
    - Screening applications prioritize **Recall (PD)** to avoid missing potential dysgraphia indicators, balanced against **Recall (LPD)** to minimize unnecessary referrals.
 
@@ -511,7 +561,7 @@ def train_and_save_final_model(
     Tuple[Path, Path]
         Paths to (saved_pipeline_file, saved_metadata_file).
     """
-    df = pd.read_csv(Path(csv_path))
+    df = load_feature_dataset(csv_path)
 
     if feature_set_name == "reduced_static_features":
         feature_cols = list(REDUCED_STATIC_FEATURES)
@@ -618,6 +668,10 @@ def main() -> None:
 
     print("\nSummary Results:")
     print(summary_df.to_string(index=False))
+
+    model_path, metadata_path = train_and_save_final_model(csv_path=csv_path)
+    print(f"\nSaved final model pipeline to {model_path}")
+    print(f"Saved model metadata to {metadata_path}")
 
 
 if __name__ == "__main__":

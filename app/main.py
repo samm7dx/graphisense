@@ -19,7 +19,7 @@ import streamlit as st
 
 from app.pipeline_handler import load_and_preprocess_image, run_app_inference
 
-DATASET_ROOT = ROOT / "data" / "raw" / "handwriting" / "extracted" / "DATASET DYSGRAPHIA HANDWRITING"
+DATASET_ROOT = ROOT / "data" / "raw"
 
 st.set_page_config(
     page_title="GraphiSense | Handwriting Analysis",
@@ -195,7 +195,7 @@ with col_input:
         else:
             st.error(
                 f"Sample file not found at: {sample_path}. "
-                "Ensure dataset is extracted under data/raw/handwriting or switch to 'Upload Image'."
+                "Ensure the class folders are extracted directly under data/raw or switch to 'Upload Image'."
             )
     else:
         uploaded = st.file_uploader(
@@ -221,6 +221,12 @@ with col_input:
 
     # Pre-analysis image info & action button
     if image_bytes is not None:
+        if (
+            st.session_state.get("analyzed_image_name") != image_name
+            or st.session_state.get("analyzed_polarity") != polarity_choice
+        ):
+            st.session_state.pop("inference_result", None)
+
         try:
             rgb_preview, gray_preview, mask_preview, is_light_detected = load_and_preprocess_image(
                 image_bytes, polarity=polarity_choice
@@ -229,14 +235,8 @@ with col_input:
             mode_desc = "Light background" if is_light_detected else "Dark background"
             st.caption(f"**Loaded**: `{image_name}` &nbsp;|&nbsp; Dimensions: `{w}×{h}` px &nbsp;|&nbsp; Detected: `{mode_desc}`")
 
-            # Check if active selection changed to reset cached inference
-            if (
-                st.session_state.get("analyzed_image_name") != image_name
-                or st.session_state.get("analyzed_polarity") != polarity_choice
-            ):
-                st.session_state.pop("inference_result", None)
-
             if st.button("Analyze handwriting", type="primary", width="stretch"):
+                st.session_state.pop("inference_result", None)
                 with st.spinner("Extracting features and querying model..."):
                     st.session_state["inference_result"] = run_app_inference(
                         image_input=image_bytes,
@@ -247,11 +247,15 @@ with col_input:
                     st.session_state["analyzed_polarity"] = polarity_choice
 
         except FileNotFoundError as e:
-            st.error(f"Required artifact not found: {e}")
+            st.error(
+                f"Required file not found: {e} "
+                "If the missing file is a model artifact, complete the dataset, "
+                "feature-generation, and training steps in README.md first."
+            )
         except ValueError as e:
             st.error(f"Input validation error: {e}")
         except Exception as e:
-            st.error(f"Failed to inspect image: {type(e).__name__} — {e}")
+            st.error(f"Could not process the image or complete inference: {type(e).__name__} — {e}")
 
 # Right Column: Primary Visualizations
 with col_viz:
@@ -410,8 +414,11 @@ if result is not None:
         meta = result.get("model_metadata", {})
         col_m1, col_m2, col_m3 = st.columns(3)
         col_m1.metric("Model Type", str(meta.get("model_type", "Random Forest")).replace("_", " ").title())
-        col_m2.metric("Feature Set", "Reduced Static (9 feats)")
-        col_m3.metric("Training Samples", f"{meta.get('n_training_samples', 249)} (5-Fold CV)")
+        col_m2.metric(
+            "Feature Set",
+            str(meta.get("feature_set_name", "Unknown")).replace("_", " ").title(),
+        )
+        col_m3.metric("Training Samples", str(meta.get("n_training_samples", "Unknown")))
 
         with st.expander("Full model metadata schema (JSON)"):
             st.json(meta)

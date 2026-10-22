@@ -113,6 +113,14 @@ def run_app_inference(
     Dict[str, Any]
         Inference result dictionary with preview arrays attached.
     """
+    if isinstance(image_input, bytes):
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {".jpg", ".jpeg", ".png"}:
+            raise ValueError(
+                f"Unsupported upload file extension '{suffix}'. "
+                "Upload a JPG, JPEG, or PNG image."
+            )
+
     rgb, gray, binary_mask, is_light = load_and_preprocess_image(image_input, polarity=polarity)
 
     # Temporary file handling for predict_handwriting interface if bytes provided
@@ -120,9 +128,6 @@ def run_app_inference(
     try:
         if isinstance(image_input, bytes):
             suffix = Path(filename).suffix.lower()
-            if suffix not in {".jpg", ".jpeg", ".png"}:
-                suffix = ".png"
-
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tf:
                 tf.write(image_input)
                 temp_path = Path(tf.name)

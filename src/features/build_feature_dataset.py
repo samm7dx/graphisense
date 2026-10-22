@@ -24,10 +24,11 @@ CLASS_MAPPING = {
     "Potential Dysgraphia": "PD",
     "Low Potential Dysgraphia": "LPD",
 }
+SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
 
 def build_feature_table(
-    dataset_dir: Union[str, Path] = "data/raw/handwriting/extracted/DATASET DYSGRAPHIA HANDWRITING",
+    dataset_dir: Union[str, Path] = "data/raw",
     output_csv: Union[str, Path] = "outputs/features/features.csv",
     repo_root: Optional[Union[str, Path]] = None,
     min_component_area: int = 5,
@@ -56,7 +57,24 @@ def build_feature_table(
     root_path = Path(repo_root).resolve() if repo_root else Path.cwd().resolve()
 
     if not ds_path.exists():
-        raise FileNotFoundError(f"Dataset root directory not found: {ds_path}")
+        raise FileNotFoundError(
+            f"Dataset root directory not found: {ds_path}. "
+            "Download and extract the dataset as described in data/raw/README.md."
+        )
+    if not ds_path.is_dir():
+        raise NotADirectoryError(f"Dataset root is not a directory: {ds_path}")
+
+    missing_folders = [
+        folder_name
+        for folder_name in CLASS_MAPPING
+        if not (ds_path / folder_name).is_dir()
+    ]
+    if missing_folders:
+        raise FileNotFoundError(
+            f"Dataset class folders missing under {ds_path}: {missing_folders}. "
+            "Place both 'Potential Dysgraphia' and 'Low Potential Dysgraphia' "
+            "folders directly in the dataset root."
+        )
 
     # Ensure parent output directory exists
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -66,17 +84,20 @@ def build_feature_table(
     # Iterate through class folders deterministically
     for folder_name, label in CLASS_MAPPING.items():
         folder_path = ds_path / folder_name
-        if not folder_path.exists():
-            continue
-
         image_files = sorted(
             [
                 f
-                for f in folder_path.glob("*.jpg")
+                for f in folder_path.iterdir()
+                if f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
                 if f.is_file()
             ],
             key=lambda p: p.name,
         )
+        if not image_files:
+            raise FileNotFoundError(
+                f"No supported handwriting images found in {folder_path}. "
+                f"Expected one of: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
+            )
 
         for img_path in image_files:
             rel_path = img_path.relative_to(root_path).as_posix()

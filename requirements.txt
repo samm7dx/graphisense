@@ -4,6 +4,7 @@ pandas
 matplotlib
 scikit-learn
 scipy
+joblib
 jupyter
 ipykernel
 streamlit
