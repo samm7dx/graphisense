@@ -21,8 +21,9 @@ GraphiSense is an experimental academic research prototype designed to investiga
 - **Language & Runtime**: Python 3.10 or newer. The repository workflow has been checked on Python 3.13.15; other Python versions should be verified in their own environments.
 - **Computer Vision & Image Processing**: OpenCV (`opencv-python`), NumPy
 - **Machine Learning & Pipeline**: Scikit-Learn, SciPy
+- **Deep Learning**: PyTorch, Torchvision (ResNet-18 transfer learning)
 - **Data Engineering**: Pandas
-- **Visualization**: Matplotlib
+- **Visualization**: Matplotlib, Plotly
 - **Web Application Interface**: Streamlit
 - **Testing & Verification**: Pytest
 
@@ -47,7 +48,12 @@ graphisense/
 ├── outputs/
 │   ├── features/                # Extracted feature dataset (features.csv)
 │   ├── figures/                 # Diagnostic plots, ROC curves, confusion matrices
-│   ├── models/                  # Saved pipeline (model_pipeline.joblib, model_metadata.json)
+│   ├── models/                  # Saved pipelines
+│   │   ├── model_pipeline.joblib        # Random Forest pipeline
+│   │   ├── model_metadata.json          # Random Forest metadata
+│   │   └── cnn/                         # CNN/ResNet-18 checkpoints
+│   │       ├── checkpoints/best_model.pt
+│   │       └── checkpoints/final_model.pt
 │   └── reports/                 # Statistical and model evaluation markdown reports
 ├── src/
 │   ├── features/                # Static feature extraction and dataset builders
@@ -55,8 +61,13 @@ graphisense/
 │   │   ├── build_feature_dataset.py # Batch feature extraction pipeline
 │   │   └── analyze_features.py      # Statistical analysis & hypothesis testing
 │   ├── models/                  # Model training, cross-validation, and inference
-│   │   ├── train_evaluate.py    # Stratified 5-fold CV training & evaluation
-│   │   └── inference.py         # Deterministic frozen-model inference engine
+│   │   ├── train_evaluate.py    # Stratified 5-fold CV training & evaluation (RF)
+│   │   ├── inference.py         # Deterministic frozen-model inference engine (RF)
+│   │   ├── cnn_dataset.py       # CNN dataset discovery, transforms, splits
+│   │   ├── cnn_model.py         # ResNet-18 binary classifier
+│   │   ├── cnn_train.py         # CNN training with early stopping & checkpoints
+│   │   ├── cnn_inference.py     # CNN checkpoint-based inference engine
+│   │   └── cnn_evaluate.py      # CNN held-out evaluation & metrics
 │   ├── preprocessing/           # Image ingestion and segmentation
 │   │   ├── image_loader.py      # Robust image reading and color conversion
 │   │   └── binarization.py      # Polarity-aware Otsu/Triangle binarization
@@ -70,7 +81,9 @@ graphisense/
 
 ## Architecture & Analysis Pipeline
 
-GraphiSense executes an end-to-end, modular computer vision and machine learning pipeline:
+GraphiSense executes an end-to-end, modular computer vision and machine learning pipeline with two analysis modes:
+
+### Common Preprocessing (Both Modes)
 
 1. **Image Loading & Grayscale Normalization** (`src/preprocessing/image_loader.py`):
    - Safely ingests standard image formats (`.jpg`, `.jpeg`, `.png`, `.bmp`, `.tiff`, `.webp`).
@@ -80,6 +93,9 @@ GraphiSense executes an end-to-end, modular computer vision and machine learning
    - Correctly accommodates dark-background / light-stroke dataset crops without blind color inversion.
    - Auto-detects paper documents (light background / dark ink) vs. inverted crops via border margin intensity analysis.
    - Strictly enforces the standard mask convention: **Handwriting Foreground = 255 (white), Background = 0 (black)**.
+
+### Mode A: Basic Analysis — Random Forest
+
 3. **Static Feature Extraction** (`src/features/handwriting_features.py`):
    - Extracts 25 static geometric, topological, and stroke distribution measurements:
      - *Image Geometry*: Width, height, aspect ratio.
@@ -94,9 +110,32 @@ GraphiSense executes an end-to-end, modular computer vision and machine learning
    - Loads the serialized Random Forest pipeline artifact (`outputs/models/model_pipeline.joblib`) and metadata schema (`outputs/models/model_metadata.json`).
    - Performs inference without fitting or altering model weights.
    - Provides model class-probability estimates mapped to `LPD` and `PD`.
-6. **Interactive Application Interface** (`app/main.py`):
-   - Streamlit dashboard providing image upload and verified dataset sample inspection.
-   - Displays side-by-side original and binarized masks, detected polarity, feature summaries, probability distributions, and selected model metadata.
+
+### Mode B: Advanced Analysis — CNN / ResNet-18
+
+3. **CNN Dataset & Transforms** (`src/models/cnn_dataset.py`):
+   - Discovers images in nested dataset structures, maps class labels (`PD`/`LPD` → 1/0).
+   - Applies ImageNet normalization and training augmentations (flip, rotation, color jitter).
+   - Creates stratified train/validation/test splits with optional participant-level grouping.
+4. **ResNet-18 Transfer Learning** (`src/models/cnn_model.py`):
+   - Loads pretrained ImageNet weights, replaces final FC layer with binary classification head.
+   - Configurable backbone freezing, dropout, and device placement (CPU/CUDA).
+4. **Training & Checkpointing** (`src/models/cnn_train.py`):
+   - AdamW optimizer, cross-entropy loss, ReduceLROnPlateau scheduler.
+   - Early stopping on validation loss, saves best checkpoint with full metadata.
+5. **Checkpoint-Based Inference** (`src/models/cnn_inference.py`):
+   - Loads frozen checkpoint, applies ImageNet transforms, returns class probabilities.
+6. **Held-Out Evaluation** (`src/models/cnn_evaluate.py`):
+   - Evaluates on isolated test split using saved split metadata.
+   - Reports accuracy, balanced accuracy, per-class precision/recall/F1, ROC-AUC, confusion matrix.
+
+### Interactive Application Interface
+
+6. **Streamlit Dashboard** (`app/main.py`):
+   - Dual-mode interface: **Basic Analysis (Random Forest)** and **Advanced Analysis (CNN/ResNet-18)**.
+   - Mode selector with real-time availability indicators.
+   - Image upload, sample selection, preprocessing preview, and mode-specific results.
+   - Research disclaimer and non-diagnostic notices prominently displayed.
 
 ---
 
@@ -122,6 +161,8 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
 ```
 
+The requirements include PyTorch and Torchvision (CPU versions by default). For CUDA support, install from the [PyTorch website](https://pytorch.org/get-started/locally/) matching your CUDA version.
+
 ### 3. Download and place the dataset
 
 The dataset is not included in this repository. Download it from the [Mendeley Data record](https://data.mendeley.com/datasets/39hr8dx76p/1) and review the provider's terms before use. Then extract the downloaded ZIP so both class folders are directly inside the expected dataset directory:
@@ -145,10 +186,11 @@ data\raw\
 
 If the ZIP contains an extra enclosing directory, move the two class folders so they sit directly under `$datasetRoot`. The raw dataset path is ignored by Git; do not add the dataset to commits.
 
-### 4. Generate features and train the model
+### 4. Generate features and train the models
 
 From the repository root with `.venv` activated, run:
 
+**Random Forest (Basic Analysis):**
 ```powershell
 python -m src.features.build_feature_dataset
 python -m src.features.analyze_features
@@ -163,6 +205,14 @@ outputs\models\model_metadata.json
 ```
 
 Feature generation requires both class folders and supported images in each. Training and evaluation stop with an actionable error if the feature CSV is missing, contains failed rows, has missing or invalid feature values, or does not include both classes.
+
+**CNN/ResNet-18 (Advanced Analysis):**
+```powershell
+python -m src.models.cnn_train --dataset-root data/raw --output-dir outputs/models/cnn --epochs 50 --batch-size 16 --num-workers 0
+python -m src.models.cnn_evaluate --checkpoint outputs/models/cnn/checkpoints/best_model.pt --dataset-root data/raw --output-dir outputs/reports/cnn_evaluation
+```
+
+The CNN training command supports configurable epochs, batch size, learning rate, weight decay, split ratios, pretrained weights, backbone freezing, dropout, and early stopping. Run `python -m src.models.cnn_train --help` for all options. The best checkpoint is saved to `outputs\models\cnn\checkpoints\best_model.pt` with full metadata. Evaluation uses the saved split metadata to ensure the same held-out test set.
 
 ### 5. Run automated tests
 
@@ -186,6 +236,7 @@ Open [http://localhost:8501](http://localhost:8501) in your browser. Uploads are
 
 You can evaluate any handwriting image directly via the Python API:
 
+### Random Forest (Basic Analysis)
 ```python
 from pathlib import Path
 from src.models.inference import predict_handwriting
@@ -200,6 +251,25 @@ print("Predicted Label:", result["predicted_label"])
 print("Class Probabilities:", result["class_probabilities"])
 print("Key Features Used:", result["features_used"])
 ```
+
+### CNN/ResNet-18 (Advanced Analysis)
+```python
+from pathlib import Path
+from src.models.cnn_inference import predict_handwriting_cnn
+
+# Provide path to an image file (.jpg, .png, etc.)
+image_file = Path("data/raw/Potential Dysgraphia/PD (1).jpg")
+
+# Execute CNN inference (loads checkpoint automatically)
+result = predict_handwriting_cnn(image_file)
+
+print("Predicted Label:", result["predicted_label"])
+print("Class Probabilities:", result["class_probabilities"])
+print("Model:", result.get("model_type", "ResNet-18"))
+print("Checkpoint:", result.get("checkpoint", "default"))
+```
+
+Both functions return a dictionary with the predicted label, class probabilities, model metadata, and a non-diagnostic disclaimer. The CNN function loads the default checkpoint from `outputs/models/cnn/checkpoints/best_model.pt` unless overridden.
 
 ---
 
