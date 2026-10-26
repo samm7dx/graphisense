@@ -9,3 +9,6 @@ jupyter
 ipykernel
 streamlit
 pytest
+plotly
+torch
+torchvision
