@@ -1501,64 +1501,112 @@ if result is not None:
         ])
 
     # -------------------------------------------------------------------------
-    # Tab 1: Feature Analysis
+    # Tab 1: Feature Analysis (Basic) / Model Architecture (Advanced)
     # -------------------------------------------------------------------------
     with tabs[0]:
-        st.markdown("##### Features Used by Model")
-
-        # Feature descriptions
-        feature_descriptions = {
-            "ink_density": ("Proportion of stroke pixels to total image area", "Ratio [0-1]"),
-            "centroid_x_norm": ("Normalized horizontal center of stroke mass", "Ratio [0-1]"),
-            "centroid_y_norm": ("Normalized vertical center of stroke mass", "Ratio [0-1]"),
-            "active_row_ratio": ("Proportion of image rows containing handwriting strokes", "Ratio [0-1]"),
-            "component_aspect_ratio_mean": ("Mean width-to-height ratio of connected components", "Ratio"),
-            "component_aspect_ratio_std": ("Std. dev. of component aspect ratios", "Ratio"),
-            "stroke_width_mean": ("Mean stroke thickness via medial-axis distance transform", "Pixels (px)"),
-            "stroke_width_median": ("Median stroke thickness via medial-axis distance transform", "Pixels (px)"),
-            "stroke_width_std": ("Std. dev. of stroke thickness across strokes", "Pixels (px)"),
-        }
-
-        # Features used table
-        feature_rows = []
-        for name, val in features_used.items():
-            desc, unit = feature_descriptions.get(name, ("Static spatial feature", "-"))
-            formatted_val = f"{val:.4f}" if isinstance(val, float) else str(val)
-            feature_rows.append({
-                "Feature": name,
-                "Measured Value": formatted_val,
-                "Unit": unit,
-                "Description": desc,
-            })
-
-        st.dataframe(pd.DataFrame(feature_rows), width="stretch", hide_index=True)
-
-        # Feature importance chart
-        if meta.get("global_feature_importance_or_coef"):
-            st.markdown("##### Feature Importance (Global)")
-            st.plotly_chart(
-                plot_feature_importance(meta["global_feature_importance_or_coef"]),
-                use_container_width=True,
-            )
-            st.caption("Mean decrease in impurity from the fitted Random Forest. Not sample-specific attribution (e.g., SHAP).")
-
-        # Feature distributions
-        st.markdown("##### Feature Distributions by Class")
-        features_df = load_features_dataset()
-        if features_df is not None:
-            feat_names = list(features_used.keys())
-            st.plotly_chart(
-                plot_feature_distributions(features_df, feat_names, features_used),
-                use_container_width=True,
-            )
-            st.caption("Violin plots show full distribution; box plots show median/IQR. Diamond = current sample.")
+        if is_cnn:
+            # CNN Model Architecture tab
+            st.markdown("##### CNN Model Architecture")
+            
+            cnn_meta = load_cnn_metadata()
+            if cnn_meta:
+                col_a1, col_a2, col_a3 = st.columns(3)
+                with col_a1:
+                    st.metric("Architecture", cnn_meta.get("model_type", "ResNet-18"))
+                with col_a2:
+                    st.metric("Input Size", f"{cnn_meta.get('image_size', 224)}×{cnn_meta.get('image_size', 224)}")
+                with col_a3:
+                    st.metric("Dropout", f"{cnn_meta.get('dropout', 0.3):.1f}")
+                
+                st.markdown("---")
+                st.markdown("**Architecture Details**")
+                st.markdown(f"""
+                - **Base Model**: ResNet-18 (pretrained on ImageNet: {cnn_meta.get('pretrained', True)})
+                - **Input Resolution**: {cnn_meta.get('image_size', 224)}×{cnn_meta.get('image_size', 224)} RGB
+                - **Backbone Frozen**: {cnn_meta.get('freeze_backbone', False)}
+                - **Dropout Rate**: {cnn_meta.get('dropout', 0.3)}
+                - **Final Layer**: Linear(512 → 2) for binary classification (PD/LPD)
+                - **Training Epochs**: {cnn_meta.get('training_epochs', 0)}
+                - **Best Validation Loss**: {cnn_meta.get('val_loss', 'N/A'):.4f}
+                """)
+                
+                # Validation metrics if available
+                val_metrics = cnn_meta.get("val_metrics", {})
+                if val_metrics:
+                    st.markdown("##### Validation Metrics (Best Epoch)")
+                    col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+                    with col_v1:
+                        st.metric("Accuracy", f"{val_metrics.get('accuracy', 0):.3f}")
+                    with col_v2:
+                        st.metric("Balanced Acc", f"{val_metrics.get('balanced_accuracy', 0):.3f}")
+                    with col_v3:
+                        st.metric("F1 (PD)", f"{val_metrics.get('f1_pd', 0):.3f}")
+                    with col_v4:
+                        st.metric("ROC-AUC", f"{val_metrics.get('roc_auc', 0):.3f}")
+            else:
+                st.info("CNN metadata not available.")
+            
+            st.markdown("---")
+            st.caption("CNN models learn features directly from pixels. Unlike the Random Forest baseline, "
+                       "there are no handcrafted features to display. The model learns hierarchical "
+                       "visual representations through convolutional layers.")
         else:
-            st.info("Feature dataset not found. Run `python -m src.features.build_feature_dataset` to enable distribution charts.")
+            # Basic Analysis - Random Forest Feature Analysis
+            st.markdown("##### Features Used by Model")
 
-        # All features expander
-        with st.expander("View all 25 extracted static features"):
-            all_rows = [{"Feature": k, "Measured Value": f"{v:.4f}" if isinstance(v, float) else str(v)} for k, v in all_features.items()]
-            st.dataframe(pd.DataFrame(all_rows), width="stretch", hide_index=True)
+            # Feature descriptions
+            feature_descriptions = {
+                "ink_density": ("Proportion of stroke pixels to total image area", "Ratio [0-1]"),
+                "centroid_x_norm": ("Normalized horizontal center of stroke mass", "Ratio [0-1]"),
+                "centroid_y_norm": ("Normalized vertical center of stroke mass", "Ratio [0-1]"),
+                "active_row_ratio": ("Proportion of image rows containing handwriting strokes", "Ratio [0-1]"),
+                "component_aspect_ratio_mean": ("Mean width-to-height ratio of connected components", "Ratio"),
+                "component_aspect_ratio_std": ("Std. dev. of component aspect ratios", "Ratio"),
+                "stroke_width_mean": ("Mean stroke thickness via medial-axis distance transform", "Pixels (px)"),
+                "stroke_width_median": ("Median stroke thickness via medial-axis distance transform", "Pixels (px)"),
+                "stroke_width_std": ("Std. dev. of stroke thickness across strokes", "Pixels (px)"),
+            }
+
+            # Features used table
+            feature_rows = []
+            for name, val in features_used.items():
+                desc, unit = feature_descriptions.get(name, ("Static spatial feature", "-"))
+                formatted_val = f"{val:.4f}" if isinstance(val, float) else str(val)
+                feature_rows.append({
+                    "Feature": name,
+                    "Measured Value": formatted_val,
+                    "Unit": unit,
+                    "Description": desc,
+                })
+
+            st.dataframe(pd.DataFrame(feature_rows), width="stretch", hide_index=True)
+
+            # Feature importance chart
+            if meta.get("global_feature_importance_or_coef"):
+                st.markdown("##### Feature Importance (Global)")
+                st.plotly_chart(
+                    plot_feature_importance(meta["global_feature_importance_or_coef"]),
+                    use_container_width=True,
+                )
+                st.caption("Mean decrease in impurity from the fitted Random Forest. Not sample-specific attribution (e.g., SHAP).")
+
+            # Feature distributions
+            st.markdown("##### Feature Distributions by Class")
+            features_df = load_features_dataset()
+            if features_df is not None:
+                feat_names = list(features_used.keys())
+                st.plotly_chart(
+                    plot_feature_distributions(features_df, feat_names, features_used),
+                    use_container_width=True,
+                )
+                st.caption("Violin plots show full distribution; box plots show median/IQR. Diamond = current sample.")
+            else:
+                st.info("Feature dataset not found. Run `python -m src.features.build_feature_dataset` to enable distribution charts.")
+
+            # All features expander
+            with st.expander("View all 25 extracted static features"):
+                all_rows = [{"Feature": k, "Measured Value": f"{v:.4f}" if isinstance(v, float) else str(v)} for k, v in all_features.items()]
+                st.dataframe(pd.DataFrame(all_rows), width="stretch", hide_index=True)
 
     # -------------------------------------------------------------------------
     # Tab 2: Image Processing (Basic) / Tab 1: Image Processing (Advanced)
@@ -2012,14 +2060,15 @@ if result is not None:
                         st.markdown("---")
                         st.markdown("##### Validation Confusion Matrix")
                         import plotly.graph_objects as go
-                        cm = val_metrics["confusion_matrix"]
+                        import numpy as np
+                        cm = np.array(val_metrics["confusion_matrix"])
                         fig = go.Figure(data=go.Heatmap(
                             z=cm,
                             x=["Pred LPD", "Pred PD"],
                             y=["True LPD", "True PD"],
                             colorscale="Blues",
                             showscale=True,
-                            text=[[f"{cm[i,j]}" for j in range(2)] for i in range(2)],
+                            text=[[f"{cm[i, j]}" for j in range(2)] for i in range(2)],
                             texttemplate="%{text}",
                             textfont={"size": 16},
                         ))
