@@ -15,6 +15,8 @@ from app.services import (
 from app.components.charts import (
     plot_feature_importance,
     plot_feature_distributions,
+    plot_feature_distributions_separated,
+    plot_class_comparison_radar,
     plot_stroke_width_distribution,
     plot_component_size_distribution,
     plot_metrics_comparison,
@@ -72,12 +74,33 @@ def render_rf_feature_analysis_tab(features_used: dict, all_features: dict, meta
     features_df = load_features_dataset()
     if features_df is not None:
         feat_names = list(features_used.keys())
-        st.plotly_chart(
-            plot_feature_distributions(features_df, feat_names, features_used),
-            width="stretch",
-            key="rf_feature_distributions",
-        )
-        st.caption("Violin plots show full distribution; box plots show median/IQR. Diamond = current sample.")
+        
+        # Tabbed view for different distribution visualizations
+        dist_tabs = st.tabs(["📊 Grouped Violin", "📈 Separated View", "🎯 Radar Comparison"])
+        
+        with dist_tabs[0]:
+            st.plotly_chart(
+                plot_feature_distributions(features_df, feat_names, features_used),
+                width="stretch",
+                key="rf_feature_distributions_grouped",
+            )
+            st.caption("Violin plots show full distribution; box plots show median/IQR. Diamond = current sample.")
+        
+        with dist_tabs[1]:
+            st.plotly_chart(
+                plot_feature_distributions_separated(features_df, feat_names, features_used),
+                width="stretch",
+                key="rf_feature_distributions_separated",
+            )
+            st.caption("Each feature shown separately for clearer LPD vs PD comparison.")
+        
+        with dist_tabs[2]:
+            st.plotly_chart(
+                plot_class_comparison_radar(features_df, feat_names, features_used),
+                width="stretch",
+                key="rf_feature_distributions_radar",
+            )
+            st.caption("Normalized mean feature values. Closer to 1 = higher values. Current sample = dotted line.")
     else:
         st.info("Feature dataset not found. Run `python -m src.features.build_feature_dataset` to enable distribution charts.")
 

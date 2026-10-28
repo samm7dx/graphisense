@@ -101,7 +101,7 @@ def plot_feature_distributions(
             fig.add_trace(go.Scatter(
                 x=[feat], y=[val],
                 mode="markers",
-                marker=dict(size=12, color="#0F172A", symbol="diamond", line=dict(width=2, color="white")),
+                marker=dict(size=14, color="#0F172A", symbol="diamond", line=dict(width=3, color="white")),
                 name="Current Sample",
                 showlegend=(i == 0),
                 hovertemplate=f"<b>{feat}</b><br>Current: {val:.4f}<extra></extra>",
@@ -120,6 +120,192 @@ def plot_feature_distributions(
     )
     fig.update_xaxes(tickangle=45, gridcolor="#E2E8F0")
     fig.update_yaxes(gridcolor="#E2E8F0")
+    return fig
+
+
+def plot_feature_distributions_separated(
+    features_df: pd.DataFrame,
+    feature_names: list,
+    current_features: dict = None,
+) -> go.Figure:
+    """Create separated violin plots for each feature - clearer LPD vs PD comparison."""
+    from plotly.subplots import make_subplots
+    
+    colors = {"PD": "#F59E0B", "LPD": "#34D399"}
+    n_features = len([f for f in feature_names if f in features_df.columns])
+    
+    # Create subplots: 3 columns, auto rows
+    cols = 3
+    rows = (n_features + cols - 1) // cols
+    
+    fig = make_subplots(
+        rows=rows, cols=cols,
+        subplot_titles=[f for f in feature_names if f in features_df.columns],
+        vertical_spacing=0.12,
+        horizontal_spacing=0.08,
+    )
+    
+    feat_idx = 0
+    for feat in feature_names:
+        if feat not in features_df.columns:
+            continue
+        
+        row = feat_idx // cols + 1
+        col = feat_idx % cols + 1
+        
+        for cls in ["PD", "LPD"]:
+            cls_data = features_df[features_df["class_label"] == cls][feat].dropna()
+            if len(cls_data) == 0:
+                continue
+            
+            fig.add_trace(go.Violin(
+                y=cls_data,
+                name=f"{cls}",
+                legendgroup=cls,
+                scalegroup=feat,
+                side="positive" if cls == "PD" else "negative",
+                line_color=colors[cls],
+                fillcolor=colors[cls],
+                opacity=0.6,
+                meanline_visible=True,
+                box_visible=True,
+                width=0.8,
+                showlegend=(feat_idx == 0),
+                hovertemplate=f"<b>{feat}</b><br>Class: {cls}<br>Value: %{{y:.4f}}<extra></extra>",
+            ), row=row, col=col)
+        
+        # Add current sample marker if provided
+        if current_features and feat in current_features:
+            val = current_features[feat]
+            fig.add_trace(go.Scatter(
+                x=[0.5], y=[val],
+                mode="markers",
+                marker=dict(size=12, color="#DC2626", symbol="diamond", line=dict(width=2, color="white")),
+                name="Current Sample",
+                showlegend=(feat_idx == 0),
+                hovertemplate=f"<b>{feat}</b><br>Current: {val:.4f}<extra></extra>",
+            ), row=row, col=col)
+        
+        feat_idx += 1
+    
+    fig.update_layout(
+        title="Feature Distributions: LPD vs PD (Separated View)",
+        height=200 * rows + 100,
+        margin=dict(l=60, r=40, t=80, b=60),
+        plot_bgcolor="white",
+        font=dict(family="Inter, system-ui", size=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        violinmode="group",
+    )
+    fig.update_xaxes(showticklabels=False, gridcolor="#E2E8F0")
+    fig.update_yaxes(gridcolor="#E2E8F0", title_text="Value")
+    
+    return fig
+
+
+def plot_class_comparison_radar(
+    features_df: pd.DataFrame,
+    feature_names: list,
+    current_features: dict = None,
+) -> go.Figure:
+    """Create radar chart comparing mean feature values for LPD vs PD."""
+    import numpy as np
+    
+    colors = {"PD": "#F59E0B", "LPD": "#34D399"}
+    
+    # Calculate mean values for each class
+    pd_means = []
+    lpd_means = []
+    feat_labels = []
+    
+    for feat in feature_names:
+        if feat not in features_df.columns:
+            continue
+        pd_data = features_df[features_df["class_label"] == "PD"][feat].dropna()
+        lpd_data = features_df[features_df["class_label"] == "LPD"][feat].dropna()
+        
+        if len(pd_data) > 0 and len(lpd_data) > 0:
+            # Normalize to 0-1 range for radar chart
+            all_vals = np.concatenate([pd_data, lpd_data])
+            min_val, max_val = all_vals.min(), all_vals.max()
+            if max_val > min_val:
+                pd_mean = (pd_data.mean() - min_val) / (max_val - min_val)
+                lpd_mean = (lpd_data.mean() - min_val) / (max_val - min_val)
+            else:
+                pd_mean = lpd_mean = 0.5
+            
+            pd_means.append(pd_mean)
+            lpd_means.append(lpd_mean)
+            feat_labels.append(feat.replace("_", " ").title())
+    
+    # Close the radar
+    pd_means.append(pd_means[0])
+    lpd_means.append(lpd_means[0])
+    feat_labels.append(feat_labels[0])
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatterpolar(
+        r=pd_means,
+        theta=feat_labels,
+        fill='toself',
+        name='Potential Dysgraphia (PD)',
+        fillcolor='rgba(245, 158, 11, 0.3)',
+        line=dict(color='#F59E0B', width=2),
+        hovertemplate="<b>%{theta}</b><br>Normalized Mean: %{r:.2f}<extra></extra>",
+    ))
+    
+    fig.add_trace(go.Scatterpolar(
+        r=lpd_means,
+        theta=feat_labels,
+        fill='toself',
+        name='Low Potential Dysgraphia (LPD)',
+        fillcolor='rgba(52, 211, 153, 0.3)',
+        line=dict(color='#34D399', width=2),
+        hovertemplate="<b>%{theta}</b><br>Normalized Mean: %{r:.2f}<extra></extra>",
+    ))
+    
+    if current_features:
+        curr_vals = []
+        for feat in feature_names:
+            if feat not in features_df.columns:
+                continue
+            if feat in current_features:
+                all_vals = np.concatenate([
+                    features_df[features_df["class_label"] == "PD"][feat].dropna(),
+                    features_df[features_df["class_label"] == "LPD"][feat].dropna()
+                ])
+                min_val, max_val = all_vals.min(), all_vals.max()
+                if max_val > min_val:
+                    curr = (current_features[feat] - min_val) / (max_val - min_val)
+                else:
+                    curr = 0.5
+                curr_vals.append(curr)
+        curr_vals.append(curr_vals[0])
+        
+        fig.add_trace(go.Scatterpolar(
+            r=curr_vals,
+            theta=feat_labels,
+            fill='toself',
+            name='Current Sample',
+            fillcolor='rgba(15, 23, 42, 0.2)',
+            line=dict(color='#0F172A', width=2, dash='dot'),
+            hovertemplate="<b>%{theta}</b><br>Current: %{r:.2f}<extra></extra>",
+        ))
+    
+    fig.update_layout(
+        title="Feature Profile Comparison: LPD vs PD (Normalized Means)",
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 1], gridcolor="#E2E8F0"),
+            angularaxis=dict(gridcolor="#E2E8F0"),
+        ),
+        height=500,
+        margin=dict(l=80, r=80, t=80, b=80),
+        font=dict(family="Inter, system-ui", size=11),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        plot_bgcolor="white",
+    )
+    
     return fig
 
 
