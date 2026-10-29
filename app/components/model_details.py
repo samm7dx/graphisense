@@ -15,6 +15,7 @@ from app.services import (
 from app.components.charts import (
     plot_feature_importance,
     plot_feature_distributions,
+    plot_feature_distributions_grouped,
     plot_feature_distributions_separated,
     plot_class_comparison_radar,
     plot_stroke_width_distribution,
