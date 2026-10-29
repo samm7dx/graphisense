@@ -124,59 +124,44 @@ def render_modelling_page():
         # Full results display
         features_used, all_features, meta = render_prediction_results(result)
 
-        # Detail tabs
         st.divider()
 
         if is_cnn:
-            tabs = st.tabs([
-                "🖼️ Image Processing",
-                "🤖 Model Architecture",
-                "📈 Training History",
-                "📊 Evaluation",
-                "⚠️ Limitations",
-            ])
-
-            with tabs[0]:
+            # CNN Results - use expanders instead of tabs
+            with st.expander("🖼️ Image Processing", expanded=True):
                 render_image_processing_tab(result, is_cnn=True)
 
-            with tabs[1]:
+            with st.expander("🤖 Model Architecture", expanded=False):
                 render_cnn_model_architecture_tab()
 
-            with tabs[2]:
+            with st.expander("📈 Training History", expanded=False):
                 render_cnn_training_history_tab()
 
-            with tabs[3]:
+            with st.expander("📊 Evaluation", expanded=False):
                 render_cnn_evaluation_tab()
 
-            with tabs[4]:
+            with st.expander("⚠️ Limitations", expanded=False):
                 render_limitations_tab(is_cnn=True)
         else:
-            tabs = st.tabs([
-                "📊 Feature Analysis",
-                "🖼️ Image Processing",
-                "🔬 Preprocessing Explorer",
-                "🤖 Model Details",
-                "⚠️ Limitations",
-            ])
-
-            with tabs[0]:
+            # RF Results - use expanders instead of tabs
+            with st.expander("📊 Feature Analysis", expanded=True):
                 render_rf_feature_analysis_tab(features_used, all_features, meta)
 
-            with tabs[1]:
+            with st.expander("🖼️ Image Processing", expanded=False):
                 render_image_processing_tab(result, is_cnn=False)
 
-            with tabs[2]:
+            with st.expander("🔬 Preprocessing Explorer", expanded=False):
                 render_preprocessing_explorer_tab()
 
-            with tabs[3]:
+            with st.expander("🤖 Model Details", expanded=False):
                 render_rf_model_details_tab(meta)
 
-            with tabs[4]:
+            with st.expander("⚠️ Limitations", expanded=False):
                 render_limitations_tab(is_cnn=False)
 
 
 def render_preprocessing_explorer_tab():
-    """Render the preprocessing explorer tab (interactive)."""
+    """Render the preprocessing explorer as a standalone section (not a tab)."""
     from app.services import get_preprocessing_stages, compute_preprocessing_stages
     import cv2
     

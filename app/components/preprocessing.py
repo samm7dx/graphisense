@@ -44,34 +44,85 @@ def render_preprocessing_page():
             **stages_dict,
         }
 
-        # Create tabs for the 6 stages
-        stage_names = [s["name"] for s in stage_defs]
-        tabs = st.tabs(stage_names)
+        # Compact grid layout - 3 columns
+        st.markdown("#### Pipeline Stages")
+        cols_per_row = 3
 
-        for idx, (tab, stage_def) in enumerate(zip(tabs, stage_defs)):
-            with tab:
-                stage_key = stage_def["key"]
-                if stage_key in all_stages:
-                    stage_image = all_stages[stage_key]
-                    stage_h, stage_w = stage_image.shape[:2]
+        for row_idx in range(0, len(stage_defs), cols_per_row):
+            row_stages = stage_defs[row_idx:row_idx + cols_per_row]
+            cols = st.columns(len(row_stages), gap="medium")
 
-                    st.markdown(f"#### Stage {stage_def['id']}: {stage_def['name']}")
-                    st.markdown(f"*{stage_def['description']}*")
-                    st.caption(f"Dimensions: {stage_w}×{stage_h} px")
+            for col_idx, stage_def in enumerate(row_stages):
+                with cols[col_idx]:
+                    stage_key = stage_def["key"]
+                    if stage_key in all_stages:
+                        stage_image = all_stages[stage_key]
+                        stage_h, stage_w = stage_image.shape[:2]
 
-                    st.image(stage_image, width="stretch", clamp=True)
+                        # Compact card
+                        with st.container(border=True):
+                            # Stage number and name
+                            st.markdown(
+                                f"""
+                                <div style="text-align: center; margin-bottom: 8px;">
+                                    <span style="
+                                        background: var(--color-primary-light);
+                                        color: var(--color-primary);
+                                        padding: 2px 8px;
+                                        border-radius: 999px;
+                                        font-size: 0.7rem;
+                                        font-weight: 600;
+                                    ">Stage {stage_def['id']}</span>
+                                    <div style="font-weight: 500; font-size: 0.85rem; margin-top: 4px; color: var(--color-text);">
+                                        {stage_def['name']}
+                                    </div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
 
-                    # View button for full-size dialog
-                    if st.button(
-                        "View Full Size",
-                        key=f"view_stage_full_{stage_def['id']}",
-                        type="secondary",
-                    ):
-                        st.session_state["preproc_viewer_stage"] = stage_def["id"]
-                        st.session_state["preproc_viewer_zoom"] = 1.0
-                        st.rerun()
-                else:
-                    st.warning(f"Stage {stage_def['id']} not available")
+                            # Compact image preview - fixed height
+                            thumb_h = 180
+                            aspect = stage_w / stage_h if stage_h > 0 else 1.0
+                            thumb_w = int(thumb_h * aspect)
+                            thumb_w = min(thumb_w, 300)
+
+                            left_pad, center, right_pad = st.columns([1, 10, 1])
+                            with center:
+                                st.image(stage_image, width=thumb_w, clamp=True)
+
+                            # Short description
+                            st.caption(stage_def['description'][:80] + "..." if len(stage_def['description']) > 80 else stage_def['description'])
+
+                            # View button
+                            if st.button(
+                                "View Full Size",
+                                key=f"view_stage_grid_{stage_def['id']}",
+                                type="secondary",
+                                use_container_width=True,
+                            ):
+                                st.session_state["preproc_viewer_stage"] = stage_def["id"]
+                                st.session_state["preproc_viewer_zoom"] = 1.0
+                                st.rerun()
+                    else:
+                        with st.container(border=True):
+                            st.markdown(
+                                f"""
+                                <div style="text-align: center; padding: 20px;">
+                                    <span style="
+                                        background: var(--color-warning-light);
+                                        color: var(--color-warning);
+                                        padding: 2px 8px;
+                                        border-radius: 999px;
+                                        font-size: 0.7rem;
+                                        font-weight: 600;
+                                    ">Stage {stage_def['id']}</span>
+                                    <div style="font-weight: 500; font-size: 0.85rem; margin-top: 4px;">{stage_def['name']}</div>
+                                    <div style="font-size: 0.7rem; color: var(--color-text-muted); margin-top: 8px;">Not available</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
 
         # Full-size image viewer dialog
         if st.session_state.get("preproc_viewer_stage") is not None:

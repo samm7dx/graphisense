@@ -76,15 +76,21 @@ def render_rf_feature_analysis_tab(features_used: dict, all_features: dict, meta
         feat_names = list(features_used.keys())
         
         # Tabbed view for different distribution visualizations
-        dist_tabs = st.tabs(["📊 Grouped Violin", "📈 Separated View", "🎯 Radar Comparison"])
+        dist_tabs = st.tabs(["📊 Grouped by Scale", "📈 Separated View", "🎯 Radar Comparison"])
         
         with dist_tabs[0]:
-            st.plotly_chart(
-                plot_feature_distributions(features_df, feat_names, features_used),
-                width="stretch",
-                key="rf_feature_distributions_grouped",
-            )
-            st.caption("Violin plots show full distribution; box plots show median/IQR. Diamond = current sample.")
+            # Grouped violin plots by feature scale/category
+            grouped_figs = plot_feature_distributions_grouped(features_df, feat_names, features_used)
+            if grouped_figs:
+                for i, fig in enumerate(grouped_figs):
+                    st.plotly_chart(
+                        fig,
+                        width="stretch",
+                        key=f"rf_feature_distributions_grouped_{i}",
+                    )
+            else:
+                st.info("No valid numeric features to display in grouped view.")
+            st.caption("Features grouped by comparable scale: ratios [0-1], aspect ratios, and pixel measurements.")
         
         with dist_tabs[1]:
             st.plotly_chart(

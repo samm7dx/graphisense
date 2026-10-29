@@ -135,6 +135,8 @@ GraphiSense executes an end-to-end, modular computer vision and machine learning
    - Dual-mode interface: **Basic Analysis (Random Forest)** and **Advanced Analysis (CNN/ResNet-18)**.
    - Mode selector with real-time availability indicators.
    - Image upload, sample selection, preprocessing preview, and mode-specific results.
+   - **Clean, expandable results layout**: Prediction output displayed first (class, probabilities, compact original/binary image previews). Secondary details (Feature Analysis, Model Architecture, Training History, Evaluation, Limitations) in collapsible expanders — no tabbed interface.
+   - **Grouped feature distributions**: Violin plots organized by comparable scale (Ink Density & Normalized Geometry [0-1], Component Aspect Ratios, Stroke Width Statistics [px]) for clearer LPD vs PD comparison.
    - Research disclaimer and non-diagnostic notices prominently displayed.
 
 ---

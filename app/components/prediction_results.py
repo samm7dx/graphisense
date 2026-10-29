@@ -47,25 +47,16 @@ def render_prediction_results(result: dict):
         config={"displayModeBar": False},
     )
 
-    # Side-by-side images
+    # Side-by-side compact image previews
     c_orig, c_proc = st.columns(2)
     with c_orig:
         st.markdown('<div class="image-caption">Original Image</div>', unsafe_allow_html=True)
-        st.image(rgb_img, width="stretch")
+        st.image(rgb_img, width=320)
     with c_proc:
         fg_pct = (binary_mask == 255).mean() * 100
         mode_tag = "Light background" if is_light else "Dark background"
         st.markdown(f'<div class="image-caption">Binary Mask (Otsu, foreground {fg_pct:.1f}%, {mode_tag})</div>', unsafe_allow_html=True)
-        st.image(binary_mask, clamp=True, width="stretch")
-
-    # Distance transform
-    dist_map = cv2.distanceTransform(binary_mask, cv2.DIST_L2, 5)
-    dist_norm = cv2.normalize(dist_map, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
-    dist_colored = cv2.applyColorMap(dist_norm, cv2.COLORMAP_INFERNO)
-    dist_rgb = cv2.cvtColor(dist_colored, cv2.COLOR_BGR2RGB)
-
-    st.markdown('<div class="image-caption">Medial Axis Distance Transform (brighter = thicker stroke center)</div>', unsafe_allow_html=True)
-    st.image(dist_rgb, width="stretch")
+        st.image(binary_mask, clamp=True, width=320)
 
     return features_used, all_features, meta
 
@@ -79,11 +70,11 @@ def render_preprocessing_preview_while_waiting(preprocessed: dict):
     c_orig, c_proc = st.columns(2)
     with c_orig:
         st.markdown('<div class="image-caption">Original Image</div>', unsafe_allow_html=True)
-        st.image(rgb_img, width="stretch")
+        st.image(rgb_img, width=320)
     with c_proc:
         fg_pct = (binary_mask == 255).mean() * 100
         mode_tag = "Light background" if is_light else "Dark background"
         st.markdown(f'<div class="image-caption">Binary Mask (Otsu, foreground {fg_pct:.1f}%, {mode_tag})</div>', unsafe_allow_html=True)
-        st.image(binary_mask, clamp=True, width="stretch")
+        st.image(binary_mask, clamp=True, width=320)
 
     st.info("Click **Analyze handwriting** to run feature extraction and model inference.")

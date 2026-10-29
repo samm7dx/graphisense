@@ -62,6 +62,116 @@ def plot_confusion_matrix(cm: np.ndarray, labels: list = ["LPD", "PD"]) -> go.Fi
     return fig
 
 
+def plot_feature_distributions_grouped(
+    features_df: pd.DataFrame,
+    feature_names: list,
+    current_features: dict = None,
+) -> list[go.Figure]:
+    """Create grouped violin plots by feature scale/category.
+
+    Groups features with comparable ranges:
+    - Group 1: Ink density & normalized geometry [0-1]
+    - Group 2: Component aspect ratios [~0.5-3]
+    - Group 3: Stroke width statistics [pixels]
+
+    Returns list of figures, one per group.
+    """
+    from plotly.subplots import make_subplots
+
+    colors = {"PD": "#F59E0B", "LPD": "#34D399"}
+
+    # Define feature groups by semantic category and scale
+    feature_groups = {
+        "Ink Density & Normalized Geometry": [
+            "ink_density",
+            "centroid_x_norm",
+            "centroid_y_norm",
+            "active_row_ratio",
+        ],
+        "Component Aspect Ratios": [
+            "component_aspect_ratio_mean",
+            "component_aspect_ratio_std",
+        ],
+        "Stroke Width Statistics (px)": [
+            "stroke_width_mean",
+            "stroke_width_median",
+            "stroke_width_std",
+        ],
+    }
+
+    figures = []
+
+    for group_name, group_features in feature_groups.items():
+        # Filter to only features that exist in the dataframe and are requested
+        valid_features = [f for f in group_features if f in features_df.columns and f in feature_names]
+        if not valid_features:
+            continue
+
+        n = len(valid_features)
+        cols = min(2, n)
+        rows = (n + cols - 1) // cols
+
+        fig = make_subplots(
+            rows=rows, cols=cols,
+            subplot_titles=[f.replace("_", " ").title() for f in valid_features],
+            vertical_spacing=0.15,
+            horizontal_spacing=0.1,
+        )
+
+        for idx, feat in enumerate(valid_features):
+            row = idx // cols + 1
+            col = idx % cols + 1
+
+            for cls in ["PD", "LPD"]:
+                cls_data = features_df[features_df["class_label"] == cls][feat].dropna()
+                if len(cls_data) == 0:
+                    continue
+
+                fig.add_trace(go.Violin(
+                    y=cls_data,
+                    name=f"{cls}",
+                    legendgroup=cls,
+                    scalegroup=feat,
+                    side="positive" if cls == "PD" else "negative",
+                    line_color=colors[cls],
+                    fillcolor=colors[cls],
+                    opacity=0.6,
+                    meanline_visible=True,
+                    box_visible=True,
+                    width=0.8,
+                    showlegend=(idx == 0),
+                    hovertemplate=f"<b>{feat.replace('_', ' ').title()}</b><br>Class: {cls}<br>Value: %{{y:.4f}}<extra></extra>",
+                ), row=row, col=col)
+
+            # Add current sample marker if provided
+            if current_features and feat in current_features:
+                val = current_features[feat]
+                fig.add_trace(go.Scatter(
+                    x=[0.5], y=[val],
+                    mode="markers",
+                    marker=dict(size=12, color="#DC2626", symbol="diamond", line=dict(width=2, color="white")),
+                    name="Current Sample",
+                    showlegend=(idx == 0),
+                    hovertemplate=f"<b>{feat.replace('_', ' ').title()}</b><br>Current: {val:.4f}<extra></extra>",
+                ), row=row, col=col)
+
+        fig.update_layout(
+            title=group_name,
+            height=250 * rows + 80,
+            margin=dict(l=60, r=40, t=80, b=60),
+            plot_bgcolor="white",
+            font=dict(family="Inter, system-ui", size=10),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            violinmode="group",
+        )
+        fig.update_xaxes(showticklabels=False, gridcolor="#E2E8F0")
+        fig.update_yaxes(gridcolor="#E2E8F0", title_text="Value")
+
+        figures.append(fig)
+
+    return figures
+
+
 def plot_feature_distributions(
     features_df: pd.DataFrame,
     feature_names: list,
