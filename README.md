@@ -6,26 +6,49 @@ GraphiSense is an experimental academic research prototype designed to investiga
 
 ---
 
+## Table of Contents
+
+- [Important Scientific & Ethical Safeguards](#important-scientific--ethical-safeguards)
+- [Technologies & Stack](#technologies--stack)
+- [Repository Structure](#repository-structure)
+- [Architecture & Analysis Pipeline](#architecture--analysis-pipeline)
+- [Quick Start](#quick-start)
+- [Installation & Setup](#installation--setup)
+- [Running the Application](#running-the-application)
+- [Running Inference Programmatically](#running-inference-programmatically)
+- [Dataset Attribution](#dataset-attribution)
+- [Troubleshooting](#troubleshooting)
+- [Testing](#testing)
+- [Contributing](#contributing)
+
+---
+
 ## Important Scientific & Ethical Safeguards
 
 1. **Screening Support, Not Clinical Diagnosis**: GraphiSense is an academic research prototype. Outputs and probability scores are statistical estimates on a specific experimental dataset; they **do not constitute medical, clinical, psychiatric, or educational diagnoses**, nor do they replace licensed multidisciplinary clinical assessments.
+
 2. **Dataset Label Nature**: Dataset labels (`PD` for Potential Dysgraphia, `LPD` for Low Potential Dysgraphia) represent research dataset categories from the original data collector, not independently verified clinical diagnoses.
+
 3. **Static vs. Dynamic Limitations**: Static 2D scanned/photographed handwriting images **cannot measure true physical pen-tip pressure, writing velocity, acceleration, or in-air cognitive hesitation pauses**. All features extracted here (such as distance-transform stroke thickness and ink density) are purely 2D morphological and spatial proxies.
+
 4. **Image-Level Validation Caveat**: The underlying dataset does not provide participant or writer identifiers. Consequently, cross-validation was partitioned at the **image level**. If multiple line crops originate from the same writer, samples from the same writer may occur across training and validation folds, which can yield optimistic performance estimates compared to true writer-independent evaluation. No writer IDs are invented or assumed.
+
 5. **Generalization**: Predictions on training or validation samples must not be presented as evidence of clinical generalization to unconstrained handwriting or diverse classroom populations.
 
 ---
 
 ## Technologies & Stack
 
-- **Language & Runtime**: Python 3.10 or newer. The repository workflow has been checked on Python 3.13.15; other Python versions should be verified in their own environments.
-- **Computer Vision & Image Processing**: OpenCV (`opencv-python`), NumPy
-- **Machine Learning & Pipeline**: Scikit-Learn, SciPy
-- **Deep Learning**: PyTorch, Torchvision (ResNet-18 transfer learning)
-- **Data Engineering**: Pandas
-- **Visualization**: Matplotlib, Plotly
-- **Web Application Interface**: Streamlit
-- **Testing & Verification**: Pytest
+| Category | Technologies |
+|----------|--------------|
+| **Language & Runtime** | Python 3.10+ (tested on 3.10–3.13) |
+| **Computer Vision** | OpenCV (`opencv-python`), NumPy |
+| **Machine Learning** | Scikit-Learn, SciPy |
+| **Deep Learning** | PyTorch, Torchvision (ResNet-18 transfer learning) |
+| **Data Engineering** | Pandas |
+| **Visualization** | Matplotlib, Plotly |
+| **Web Interface** | Streamlit |
+| **Testing** | Pytest |
 
 ---
 
@@ -34,219 +57,234 @@ GraphiSense is an experimental academic research prototype designed to investiga
 ```text
 graphisense/
 ├── app/
-│   ├── main.py                  # Streamlit interactive web application
-│   └── pipeline_handler.py      # Decoupled application pipeline handler
+│   ├── main.py                  # Streamlit application entry point & router
+│   ├── pipeline_handler.py      # Decoupled preprocessing/inference pipeline
+│   ├── components/              # Reusable UI components
+│   │   ├── charts.py            # Plotly charts (gauges, violin, radar, etc.)
+│   │   ├── model_details.py     # Feature analysis, model details, limitations
+│   │   ├── navigation.py        # Sidebar navigation (6 sections)
+│   │   ├── prediction_results.py # Prediction card, probability gauges, images
+│   │   ├── preprocessing.py     # Preprocessing stage grid viewer
+│   │   └── upload.py            # Image upload & sample selection
+│   ├── page_renderers/          # Page-level renderers
+│   │   ├── modelling.py         # Main workspace (upload → analyze → results)
+│   │   ├── methodology.py       # Methodology, RF vs CNN comparison
+│   │   ├── about.py             # About Dysgraphia
+│   │   ├── preprocessing.py     # Preprocessing pipeline explorer
+│   │   ├── repository_info.py   # Repository structure & run guide
+│   │   └── comparison.py        # RF vs CNN comparison wrapper
+│   └── services/                # Business logic & data loading
+│       ├── inference_service.py # RF/CNN inference orchestration
+│       ├── metrics_loader.py    # Evaluation metrics loading
+│       ├── model_service.py     # Model availability & metadata
+│       ├── feature_service.py   # Feature dataset loading
+│       └── preprocessing_service.py # Pipeline stage computation
 ├── data/
-│   ├── raw/                     # Raw image storage (dataset excluded via .gitignore)
+│   ├── raw/                     # Raw images (git-ignored)
 │   │   ├── README.md            # Dataset placement instructions
-│   │   ├── Potential Dysgraphia/ # Local class folder (git-ignored)
-│   │   └── Low Potential Dysgraphia/ # Local class folder (git-ignored)
+│   │   ├── Potential Dysgraphia/
+│   │   └── Low Potential Dysgraphia/
 │   └── processed/               # Intermediate preprocessed data
 ├── notebooks/
-│   ├── Stepwise-Guided-Notebook.ipynb  # Exploratory and guided analysis
-│   └── inference_demo.ipynb            # End-to-end inference demonstration notebook
+│   ├── Stepwise-Guided-Notebook.ipynb
+│   └── inference_demo.ipynb
 ├── outputs/
-│   ├── features/                # Extracted feature dataset (features.csv)
-│   ├── figures/                 # Diagnostic plots, ROC curves, confusion matrices
-│   ├── models/                  # Saved pipelines
-│   │   ├── model_pipeline.joblib        # Random Forest pipeline
-│   │   ├── model_metadata.json          # Random Forest metadata
-│   │   └── cnn/                         # CNN/ResNet-18 checkpoints
-│   │       ├── checkpoints/best_model.pt
-│   │       └── checkpoints/final_model.pt
-│   └── reports/                 # Statistical and model evaluation markdown reports
+│   ├── features/                # features.csv (249×29)
+│   ├── figures/                 # ROC, confusion matrices, feature plots
+│   ├── models/
+│   │   ├── model_pipeline.joblib
+│   │   ├── model_metadata.json
+│   │   └── cnn/checkpoints/best_model.pt
+│   └── reports/                 # Markdown evaluation reports
 ├── src/
-│   ├── features/                # Static feature extraction and dataset builders
-│   │   ├── handwriting_features.py  # 25 static feature extraction functions
-│   │   ├── build_feature_dataset.py # Batch feature extraction pipeline
-│   │   └── analyze_features.py      # Statistical analysis & hypothesis testing
-│   ├── models/                  # Model training, cross-validation, and inference
-│   │   ├── train_evaluate.py    # Stratified 5-fold CV training & evaluation (RF)
-│   │   ├── inference.py         # Deterministic frozen-model inference engine (RF)
-│   │   ├── cnn_dataset.py       # CNN dataset discovery, transforms, splits
-│   │   ├── cnn_model.py         # ResNet-18 binary classifier
-│   │   ├── cnn_train.py         # CNN training with early stopping & checkpoints
-│   │   ├── cnn_inference.py     # CNN checkpoint-based inference engine
-│   │   └── cnn_evaluate.py      # CNN held-out evaluation & metrics
-│   ├── preprocessing/           # Image ingestion and segmentation
-│   │   ├── image_loader.py      # Robust image reading and color conversion
-│   │   └── binarization.py      # Polarity-aware Otsu/Triangle binarization
-│   └── visualization/           # Plotting utilities and visual demos
-├── tests/                       # Automated unit and integration tests
-├── requirements.txt             # Runtime, test, and notebook dependencies
-└── README.md                    # Project documentation and reproduction guide
+│   ├── features/                # Static feature extraction
+│   ├── models/                  # RF & CNN training/inference
+│   ├── preprocessing/           # Image loading & binarization
+│   └── visualization/           # Plotting utilities
+├── tests/                       # Pytest suite (51 tests)
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
 ## Architecture & Analysis Pipeline
 
-GraphiSense executes an end-to-end, modular computer vision and machine learning pipeline with two analysis modes:
+GraphiSense executes a modular CV/ML pipeline with two analysis modes:
 
 ### Common Preprocessing (Both Modes)
 
 1. **Image Loading & Grayscale Normalization** (`src/preprocessing/image_loader.py`):
-   - Safely ingests standard image formats (`.jpg`, `.jpeg`, `.png`, `.bmp`, `.tiff`, `.webp`).
-   - Validates existence, regular file status, non-zero file sizes, and handles non-ASCII paths.
-   - Normalizes single-channel, 3-channel, and 4-channel formats into a 2D uint8 grayscale array.
+   - Ingests standard formats (`.jpg`, `.jpeg`, `.png`, `.bmp`, `.tiff`, `.webp`)
+   - Validates existence, file status, non-zero size, handles non-ASCII paths
+   - Normalizes to 2D uint8 grayscale
+
 2. **Polarity-Aware Binarization** (`src/preprocessing/binarization.py`):
-   - Correctly accommodates dark-background / light-stroke dataset crops without blind color inversion.
-   - Auto-detects paper documents (light background / dark ink) vs. inverted crops via border margin intensity analysis.
-   - Strictly enforces the standard mask convention: **Handwriting Foreground = 255 (white), Background = 0 (black)**.
+   - Handles dark-background/light-stroke dataset crops correctly
+   - Auto-detects paper documents (light bg/dark ink) via border analysis
+   - Enforces: **Handwriting = 255 (white), Background = 0 (black)**
 
 ### Mode A: Basic Analysis — Random Forest
 
 3. **Static Feature Extraction** (`src/features/handwriting_features.py`):
-   - Extracts 25 static geometric, topological, and stroke distribution measurements:
-     - *Image Geometry*: Width, height, aspect ratio.
-     - *Ink Density*: Proportion of active stroke pixels ($N_{\text{fg}} / (H \times W)$).
-     - *Connected Components*: Speckle-filtered count, component width, height, and area statistics.
-     - *Spatial Distribution*: Normalized horizontal/vertical centroids, row-projection distribution, active row ratio.
-     - *Stroke Width Proxy*: Medial-axis Euclidean distance transform thickness proxy ($2 \times R_{\text{inscribed}}$).
+   - 25 geometric, topological, stroke-distribution features:
+     - Image Geometry: width, height, aspect ratio
+     - Ink Density: $N_{\text{fg}} / (H \times W)$
+     - Connected Components: count, width/height/area statistics
+     - Spatial Distribution: normalized centroids, row projections, active row ratio
+     - Stroke Width Proxy: medial-axis distance transform ($2 \times R_{\text{inscribed}}$)
+
 4. **Model Training & Evaluation** (`src/models/train_evaluate.py`):
-   - Evaluates Logistic Regression and Random Forest classifiers using Stratified 5-Fold Cross-Validation.
-   - Uses `reduced_static_features` (9 spatial ratios and pixel-unit stroke thickness proxies) rather than raw crop dimensions for the primary model.
+   - Logistic Regression & Random Forest with Stratified 5-Fold CV
+   - Primary model uses 9 reduced static features (ratios + pixel proxies)
+
 5. **Deterministic Single-Image Inference** (`src/models/inference.py`):
-   - Loads the serialized Random Forest pipeline artifact (`outputs/models/model_pipeline.joblib`) and metadata schema (`outputs/models/model_metadata.json`).
-   - Performs inference without fitting or altering model weights.
-   - Provides model class-probability estimates mapped to `LPD` and `PD`.
+   - Loads frozen pipeline + metadata, no refitting
+   - Returns class probabilities mapped to `LPD`/`PD`
 
 ### Mode B: Advanced Analysis — CNN / ResNet-18
 
 3. **CNN Dataset & Transforms** (`src/models/cnn_dataset.py`):
-   - Discovers images in nested dataset structures, maps class labels (`PD`/`LPD` → 1/0).
-   - Applies ImageNet normalization and training augmentations (flip, rotation, color jitter).
-   - Creates stratified train/validation/test splits with optional participant-level grouping.
+   - Discovers nested dataset structures, maps `PD`/`LPD` → 1/0
+   - ImageNet normalization + augmentations (flip, rotation, color jitter)
+   - Stratified train/val/test splits
+
 4. **ResNet-18 Transfer Learning** (`src/models/cnn_model.py`):
-   - Loads pretrained ImageNet weights, replaces final FC layer with binary classification head.
-   - Configurable backbone freezing, dropout, and device placement (CPU/CUDA).
-4. **Training & Checkpointing** (`src/models/cnn_train.py`):
-   - AdamW optimizer, cross-entropy loss, ReduceLROnPlateau scheduler.
-   - Early stopping on validation loss, saves best checkpoint with full metadata.
-5. **Checkpoint-Based Inference** (`src/models/cnn_inference.py`):
-   - Loads frozen checkpoint, applies ImageNet transforms, returns class probabilities.
-6. **Held-Out Evaluation** (`src/models/cnn_evaluate.py`):
-   - Evaluates on isolated test split using saved split metadata.
-   - Reports accuracy, balanced accuracy, per-class precision/recall/F1, ROC-AUC, confusion matrix.
+   - Pretrained ImageNet weights, binary classification head
+   - Configurable backbone freezing, dropout, device placement
 
-### Interactive Application Interface
+5. **Training & Checkpointing** (`src/models/cnn_train.py`):
+   - AdamW, cross-entropy, ReduceLROnPlateau
+   - Early stopping on val loss, saves best checkpoint with metadata
 
-6. **Streamlit Dashboard** (`app/main.py`):
-   - Dual-mode interface: **Basic Analysis (Random Forest)** and **Advanced Analysis (CNN/ResNet-18)**.
-   - Mode selector with real-time availability indicators.
-   - Image upload, sample selection, preprocessing preview, and mode-specific results.
-   - **Clean, expandable results layout**: Prediction output displayed first (class, probabilities, compact original/binary image previews). Secondary details (Feature Analysis, Model Architecture, Training History, Evaluation, Limitations) in collapsible expanders — no tabbed interface.
-   - **Grouped feature distributions**: Violin plots organized by comparable scale (Ink Density & Normalized Geometry [0-1], Component Aspect Ratios, Stroke Width Statistics [px]) for clearer LPD vs PD comparison.
-   - Research disclaimer and non-diagnostic notices prominently displayed.
+6. **Checkpoint-Based Inference** (`src/models/cnn_inference.py`):
+   - Loads frozen checkpoint, applies ImageNet transforms, returns probabilities
+
+7. **Held-Out Evaluation** (`src/models/cnn_evaluate.py`):
+   - Evaluates on isolated test split using saved metadata
+   - Reports accuracy, balanced accuracy, per-class P/R/F1, ROC-AUC, CM
+
+### Interactive Application Interface (`app/main.py`)
+
+- **Dual-mode interface**: Basic (RF) / Advanced (CNN/ResNet-18)
+- **Real-time model availability** indicators
+- **Clean, expandable results layout**:
+  - Prediction output first: class, probabilities, compact original/binary previews (320px)
+  - Secondary details in collapsible expanders — **no tabbed interface**
+- **RF expanders**: Feature Analysis, Image Processing, Preprocessing Explorer, Model Details, Limitations
+- **CNN expanders**: Image Processing, Model Architecture, Training History, Evaluation, Limitations
+- **Grouped feature distributions**: Violin plots by comparable scale
+  - Ink Density & Normalized Geometry [0–1]
+  - Component Aspect Ratios
+  - Stroke Width Statistics [px]
+- **Compact preprocessing grid**: 3-column responsive layout with stage thumbnails
+- Research disclaimers prominently displayed
 
 ---
 
-## Installation & Setup (Windows PowerShell)
-
-### 1. Prerequisites
-Install Python 3.10 or newer. Use the Python launcher (`py`) to select the interpreter.
-
-### 2. Environment Setup
-Open Windows PowerShell in the repository root and create a project-local virtual environment:
+## Quick Start
 
 ```powershell
-py -3.13 -m venv .venv
+# 1. Clone & enter repo
+git clone https://github.com/samm7dx/graphisense.git
+cd graphisense
+
+# 2. Create venv & install deps
+py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+
+# 3. Download dataset from Mendeley Data (DOI: 10.17632/39hr8dx76p.1)
+#    Extract so class folders sit directly under data\raw\
+
+# 4. Train Random Forest
+python -m src.features.build_feature_dataset
+python -m src.models.train_evaluate
+
+# 5. (Optional) Train CNN
+python -m src.models.cnn_train --dataset-root data/raw --output-dir outputs/models/cnn --epochs 50
+
+# 6. Launch app
+python -m streamlit run app/main.py
+# Open http://localhost:8501
+```
+
+---
+
+## Installation & Setup
+
+### Prerequisites
+- Python 3.10 or newer (use `py -3` launcher on Windows)
+- Git
+- ~2 GB disk space for dataset + outputs
+
+### Environment Setup (Windows PowerShell)
+
+```powershell
+# Create & activate virtual environment
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# Upgrade pip & install dependencies
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-If PowerShell blocks activation, allow it for the current terminal only and activate again:
+> **Note**: If PowerShell blocks script activation, run once:
+> ```powershell
+> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+> .\.venv\Scripts\Activate.ps1
+> ```
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-```
+Requirements include PyTorch/Torchvision (CPU by default). For CUDA, install from [pytorch.org](https://pytorch.org/get-started/locally/).
 
-The requirements include PyTorch and Torchvision (CPU versions by default). For CUDA support, install from the [PyTorch website](https://pytorch.org/get-started/locally/) matching your CUDA version.
+### Dataset Placement
 
-### 3. Download and place the dataset
-
-The dataset is not included in this repository. Download it from the [Mendeley Data record](https://data.mendeley.com/datasets/39hr8dx76p/1) and review the provider's terms before use. Then extract the downloaded ZIP so both class folders are directly inside the expected dataset directory:
-
-```powershell
-$datasetZip = Read-Host "Enter the full path to the downloaded Mendeley dataset ZIP"
-$datasetRoot = Join-Path $PWD "data\raw"
-if (-not (Test-Path -LiteralPath $datasetZip -PathType Leaf)) { throw "Dataset ZIP not found: $datasetZip" }
-New-Item -ItemType Directory -Force -Path $datasetRoot
-Expand-Archive -LiteralPath $datasetZip -DestinationPath $datasetRoot
-Get-ChildItem -Path $datasetRoot
-```
-
-The resulting layout must be:
+Download the [Mendeley Potential Dysgraphia Handwriting Dataset](https://data.mendeley.com/datasets/39hr8dx76p/1) and extract so the structure is:
 
 ```text
 data\raw\
 ├── Potential Dysgraphia\
+│   ├── PD (1).jpg
+│   └── ...
 └── Low Potential Dysgraphia\
+    ├── LPD (1).jpg
+    └── ...
 ```
 
-If the ZIP contains an extra enclosing directory, move the two class folders so they sit directly under `$datasetRoot`. The raw dataset path is ignored by Git; do not add the dataset to commits.
+The `data\raw` directory is git-ignored — do not commit dataset files.
 
-### 4. Generate features and train the models
+---
 
-From the repository root with `.venv` activated, run:
-
-**Random Forest (Basic Analysis):**
-```powershell
-python -m src.features.build_feature_dataset
-python -m src.features.analyze_features
-python -m src.models.train_evaluate
-```
-
-Feature extraction writes `outputs\features\features.csv`. The analysis and model-evaluation commands create the expected reports and figures. The model-evaluation command also trains the final Random Forest and saves:
+## Running the Application
 
 ```powershell
-outputs\models\model_pipeline.joblib
-outputs\models\model_metadata.json
-```
-
-Feature generation requires both class folders and supported images in each. Training and evaluation stop with an actionable error if the feature CSV is missing, contains failed rows, has missing or invalid feature values, or does not include both classes.
-
-**CNN/ResNet-18 (Advanced Analysis):**
-```powershell
-python -m src.models.cnn_train --dataset-root data/raw --output-dir outputs/models/cnn --epochs 50 --batch-size 16 --num-workers 0
-python -m src.models.cnn_evaluate --checkpoint outputs/models/cnn/checkpoints/best_model.pt --dataset-root data/raw --output-dir outputs/reports/cnn_evaluation
-```
-
-The CNN training command supports configurable epochs, batch size, learning rate, weight decay, split ratios, pretrained weights, backbone freezing, dropout, and early stopping. Run `python -m src.models.cnn_train --help` for all options. The best checkpoint is saved to `outputs\models\cnn\checkpoints\best_model.pt` with full metadata. Evaluation uses the saved split metadata to ensure the same held-out test set.
-
-### 5. Run automated tests
-
-```powershell
-python -m pytest tests/ -q
-```
-
-Tests that require the external dataset or generated model/report artifacts are skipped when those files are unavailable. Synthetic preprocessing, input-validation, schema, and model tests can run without downloading the dataset.
-
-### 6. Launch the web application
-
-```powershell
+# From repo root with .venv activated
 python -m streamlit run app/main.py
 ```
 
-Open [http://localhost:8501](http://localhost:8501) in your browser. Uploads are limited to JPG/JPEG/PNG in the interface. The model must be trained as described above to complete predictions.
+Open **http://localhost:8501** in your browser.
+
+**UI Navigation (6 sections via sidebar):**
+1. 🏠 **Modelling** — Upload/sample → Analyze → Results (default landing)
+2. 🔬 **Methodology** — Pipeline details, feature descriptions, evaluation protocols
+3. ⚖️ **RF vs CNN Comparison** — Side-by-side metrics (CV vs held-out)
+4. ⚙️ **Preprocessing** — 6-stage pipeline grid with full-size viewer
+5. 📁 **Repository Info** — Structure, artifacts, run commands
+6. ℹ️ **About Dysgraphia** — Condition overview, prevalence, disclaimer
 
 ---
 
 ## Running Inference Programmatically
 
-You can evaluate any handwriting image directly via the Python API:
-
 ### Random Forest (Basic Analysis)
+
 ```python
 from pathlib import Path
 from src.models.inference import predict_handwriting
 
-# Provide path to an image file (.jpg, .png, etc.)
 image_file = Path("data/raw/Potential Dysgraphia/PD (1).jpg")
-
-# Execute deterministic inference
 result = predict_handwriting(image_file)
 
 print("Predicted Label:", result["predicted_label"])
@@ -255,14 +293,12 @@ print("Key Features Used:", result["features_used"])
 ```
 
 ### CNN/ResNet-18 (Advanced Analysis)
+
 ```python
 from pathlib import Path
 from src.models.cnn_inference import predict_handwriting_cnn
 
-# Provide path to an image file (.jpg, .png, etc.)
 image_file = Path("data/raw/Potential Dysgraphia/PD (1).jpg")
-
-# Execute CNN inference (loads checkpoint automatically)
 result = predict_handwriting_cnn(image_file)
 
 print("Predicted Label:", result["predicted_label"])
@@ -271,20 +307,71 @@ print("Model:", result.get("model_type", "ResNet-18"))
 print("Checkpoint:", result.get("checkpoint", "default"))
 ```
 
-Both functions return a dictionary with the predicted label, class probabilities, model metadata, and a non-diagnostic disclaimer. The CNN function loads the default checkpoint from `outputs/models/cnn/checkpoints/best_model.pt` unless overridden.
+Both return: `predicted_label`, `class_probabilities`, `model_metadata`, and a non-diagnostic disclaimer.
 
 ---
 
-## Dataset Attribution and Organization
+## Dataset Attribution
 
-- **Source**: Mendeley Data, *Potential Dysgraphia Handwriting Dataset of School-Age Children*, Ramlan et al. (Oct 2023), DOI: [10.17632/39hr8dx76p.1](https://data.mendeley.com/datasets/39hr8dx76p.1). Follow the provider's license and attribution requirements.
-- **Placement**: Place the class folders under:
-  ```text
-  data\raw\
-  ├── Potential Dysgraphia/
-  │   └── ...
-  └── Low Potential Dysgraphia/
-      └── ...
-  ```
+- **Source**: Mendeley Data, *Potential Dysgraphia Handwriting Dataset of School-Age Children*, Ramlan et al. (Oct 2023), DOI: [10.17632/39hr8dx76p.1](https://data.mendeley.com/datasets/39hr8dx76p/1)
+- **License**: Follow the provider's terms and attribution requirements
+- **Placement**: Class folders under `data\raw\` as shown above
 
-Raw handwriting images and generated outputs are excluded from Git by `.gitignore`. This project is a research screening-support prototype, not a diagnostic tool.
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `ModuleNotFoundError: app.*` | Ensure repo root is on `sys.path` (handled by `app/main.py`) |
+| `CNN model not available` | Train CNN first: `python -m src.models.cnn_train ...` |
+| `Feature dataset not found` | Run `python -m src.features.build_feature_dataset` |
+| `Port 8501 in use` | Use `streamlit run app/main.py --server.port 8502` |
+| PowerShell script execution blocked | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
+| `raw_image1.jpeg` missing | File is in `data/raw/` — do not delete |
+| Tests fail with dataset errors | Expected — tests requiring dataset are skipped when unavailable |
+
+---
+
+## Testing
+
+```powershell
+# Run full test suite
+python -m pytest tests/ -q
+
+# Run with coverage
+python -m pytest tests/ --cov=src --cov=app -q
+
+# Run specific test module
+python -m pytest tests/test_inference.py -v
+```
+
+- **51 tests** (unit + integration)
+- Tests requiring dataset/artifacts are **skipped** when unavailable
+- Synthetic preprocessing, validation, schema, and model tests run without dataset
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make changes with clear, focused commits
+4. Ensure tests pass: `python -m pytest -q`
+5. Check style: `git diff --check`
+6. Open a Pull Request with description of changes
+
+### Code Quality Standards
+- Modular architecture: `app/main.py` routes; components in `app/components/`; services in `app/services/`
+- No circular imports; shared charts in `app/components/charts.py`
+- No dummy/fake data — handle missing artifacts gracefully
+- Unique, stable Plotly keys for all charts
+- Preserve existing inference logic; do not retrain models in PRs
+
+---
+
+## License & Disclaimer
+
+This project is an **academic research prototype** for screening support only. It does not provide medical, clinical, psychiatric, or educational diagnoses. Raw handwriting images and generated outputs are excluded from Git by `.gitignore`.
+
+**Dataset**: Mendeley Data (DOI: 10.17632/39hr8dx76p.1) — follow provider's license.
