@@ -192,86 +192,176 @@ def render_comparison_page():
     st.warning("""
     ⚠️ **Evaluation Protocol Difference**
 
-    - **Random Forest**: 5-Fold Cross-Validation (N=249) — metrics are cross-validation estimates
-    - **CNN/ResNet-18**: Held-out test split (15% of data) — metrics are single test-set estimates
+    - **Random Forest**: 5-Fold Cross-Validation (N=249) — metrics are cross-validation estimates with standard deviation
+    - **CNN/ResNet-18**: Held-out test split (15% = 38 images) — metrics are single test-set estimates
 
     These evaluation protocols are **not directly comparable**. A fair comparison would require both models to be evaluated on the same held-out test set using the same protocol.
     """)
+
+    st.markdown("### Key Dataset Information")
+    col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+    with col_d1:
+        st.metric("Total Images", "249")
+    with col_d2:
+        st.metric("CNN Training", "174")
+    with col_d3:
+        st.metric("CNN Validation", "37")
+    with col_d4:
+        st.metric("CNN Test", "38")
+
+    st.caption("CNN uses pretrained ImageNet weights (ResNet-18). Best checkpoint at Epoch 13. "
+               "RF uses 9 handcrafted features on all 249 images via 5-fold CV.")
 
     st.divider()
 
     from app.services import load_rf_metrics_for_comparison, load_cnn_metrics_for_comparison, load_rf_confusion_matrix
     import numpy as np
-    from app.components.charts import plot_confusion_matrix
+    from app.components.charts import (
+        plot_confusion_matrix,
+        plot_protocol_aware_metric_comparison,
+        plot_rf_cnn_confusion_matrices,
+        plot_rf_cnn_per_class_comparison,
+    )
 
     # Load metrics
     rf_metrics = load_rf_metrics_for_comparison()
     cnn_metrics = load_cnn_metrics_for_comparison()
 
     if rf_metrics is not None and cnn_metrics is not None:
-        # Metrics comparison table
-        st.markdown("### Performance Comparison")
+        # Main metrics comparison with protocol-aware charts
+        st.markdown("### Performance Comparison (Protocol-Aware)")
+        st.caption("Values shown as percentages. RF includes ±1 std dev from 5-fold CV. CNN is single held-out test (N=38).")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("##### Random Forest (5-Fold CV)")
-            st.metric("Accuracy", f"{rf_metrics.get('accuracy_mean', 0):.3f} ± {rf_metrics.get('accuracy_std', 0):.3f}")
-            st.metric("Balanced Accuracy", f"{rf_metrics.get('balanced_accuracy_mean', 0):.3f} ± {rf_metrics.get('balanced_accuracy_std', 0):.3f}")
-            st.metric("F1 (PD)", f"{rf_metrics.get('f1_score_mean', 0):.3f} ± {rf_metrics.get('f1_score_std', 0):.3f}")
-            st.metric("ROC-AUC", f"{rf_metrics.get('roc_auc_mean', 0):.3f} ± {rf_metrics.get('roc_auc_std', 0):.3f}")
+        # Accuracy comparison
+        st.plotly_chart(
+            plot_protocol_aware_metric_comparison(
+                rf_metrics, cnn_metrics,
+                metric_key="accuracy_mean",
+                metric_name="Accuracy",
+                rf_std_key="accuracy_std",
+            ),
+            width="stretch",
+            key="comparison_accuracy",
+        )
 
-        with col2:
-            st.markdown("##### CNN/ResNet-18 (Held-Out Test)")
-            test_metrics = cnn_metrics.get("test_metrics", {})
-            st.metric("Accuracy", f"{test_metrics.get('accuracy', 0):.3f}")
-            st.metric("Balanced Accuracy", f"{test_metrics.get('balanced_accuracy', 0):.3f}")
-            st.metric("F1 (PD)", f"{test_metrics.get('f1_pd', 0):.3f}")
-            st.metric("ROC-AUC", f"{test_metrics.get('roc_auc', 0):.3f}")
+        # Balanced Accuracy comparison
+        st.plotly_chart(
+            plot_protocol_aware_metric_comparison(
+                rf_metrics, cnn_metrics,
+                metric_key="balanced_accuracy_mean",
+                metric_name="Balanced Accuracy",
+                rf_std_key="balanced_accuracy_std",
+            ),
+            width="stretch",
+            key="comparison_balanced_accuracy",
+        )
 
-        # Confusion matrices
+        # F1-Score comparison
+        st.plotly_chart(
+            plot_protocol_aware_metric_comparison(
+                rf_metrics, cnn_metrics,
+                metric_key="f1_score_mean",
+                metric_name="F1-Score (PD)",
+                rf_std_key="f1_score_std",
+            ),
+            width="stretch",
+            key="comparison_f1",
+        )
+
+        # ROC-AUC comparison
+        st.plotly_chart(
+            plot_protocol_aware_metric_comparison(
+                rf_metrics, cnn_metrics,
+                metric_key="roc_auc_mean",
+                metric_name="ROC-AUC",
+                rf_std_key="roc_auc_std",
+            ),
+            width="stretch",
+            key="comparison_roc_auc",
+        )
+
         st.divider()
-        col_cm1, col_cm2 = st.columns(2)
-        with col_cm1:
-            st.markdown("##### RF Confusion Matrix (CV)")
-            rf_cm = load_rf_confusion_matrix()
-            if rf_cm is not None:
-                fig = plot_confusion_matrix(np.array(rf_cm), labels=["LPD", "PD"])
-                st.plotly_chart(fig, width="stretch", key="rf_cm_comparison")
-            else:
-                st.info("RF confusion matrix not available. Run full evaluation to generate.")
 
-        with col_cm2:
-            st.markdown("##### CNN Confusion Matrix (Test)")
-            cnn_cm = cnn_metrics.get("test_confusion_matrix", {})
-            if cnn_cm:
-                cm = np.array(cnn_cm)
-                fig = plot_confusion_matrix(cm, labels=["LPD", "PD"])
-                st.plotly_chart(fig, width="stretch", key="cnn_cm_comparison")
-            else:
-                st.info("CNN confusion matrix not available.")
+        # Confusion matrices side by side
+        st.markdown("### Confusion Matrix Comparison")
+        rf_cm = load_rf_confusion_matrix()
+        cnn_cm = cnn_metrics.get("test_confusion_matrix", [])
 
-        # Per-class metrics
+        if rf_cm is not None or cnn_cm:
+            st.plotly_chart(
+                plot_rf_cnn_confusion_matrices(rf_cm, cnn_cm),
+                width="stretch",
+                key="comparison_confusion_matrices",
+            )
+        else:
+            st.info("Confusion matrices not available.")
+
         st.divider()
-        st.markdown("##### Per-Class Metrics Comparison")
-        col_p1, col_p2 = st.columns(2)
-        with col_p1:
-            st.markdown("**Random Forest (CV)**")
-            if rf_metrics:
-                for cls in ["PD", "LPD"]:
-                    p = rf_metrics.get(f"precision_{cls.lower()}_mean", 0)
-                    r = rf_metrics.get(f"recall_{cls.lower()}_mean", 0)
-                    f = rf_metrics.get(f"f1_{cls.lower()}_mean", 0)
-                    st.metric(f"{cls} F1", f"{f:.3f}", delta=f"P={p:.3f}, R={r:.3f}")
 
-        with col_p2:
-            st.markdown("**CNN (Test)**")
-            if cnn_metrics.get("test_metrics"):
-                tm = cnn_metrics["test_metrics"]
-                for cls in ["PD", "LPD"]:
-                    p = tm.get(f"precision_{cls.lower()}", 0)
-                    r = tm.get(f"recall_{cls.lower()}", 0)
-                    f = tm.get(f"f1_{cls.lower()}", 0)
-                    st.metric(f"{cls} F1", f"{f:.3f}", delta=f"P={p:.3f}, R={r:.3f}")
+        # Per-class metrics comparison
+        st.markdown("### Per-Class Metrics Comparison")
+        st.plotly_chart(
+            plot_rf_cnn_per_class_comparison(rf_metrics, cnn_metrics),
+            width="stretch",
+            key="comparison_per_class",
+        )
+
+        st.divider()
+
+        # Summary table with exact values
+        st.markdown("### Numerical Summary")
+        test_metrics = cnn_metrics.get("test_metrics", {})
+
+        summary_data = {
+            "Metric": ["Accuracy", "Balanced Accuracy", "Precision (PD)", "Recall (PD)", "F1 (PD)", "ROC-AUC"],
+            "RF Set A (5-Fold CV)": [
+                f"{rf_metrics.get('accuracy_mean', 0)*100:.1f}% ± {rf_metrics.get('accuracy_std', 0)*100:.1f}%",
+                f"{rf_metrics.get('balanced_accuracy_mean', 0)*100:.1f}% ± {rf_metrics.get('balanced_accuracy_std', 0)*100:.1f}%",
+                f"{rf_metrics.get('precision_pd_mean', 0)*100:.1f}% ± {rf_metrics.get('precision_std', 0)*100:.1f}%",
+                f"{rf_metrics.get('recall_pd_mean', 0)*100:.1f}% ± {rf_metrics.get('recall_pd_std', 0)*100:.1f}%",
+                f"{rf_metrics.get('f1_pd_mean', 0)*100:.1f}% ± {rf_metrics.get('f1_score_std', 0)*100:.1f}%",
+                f"{rf_metrics.get('roc_auc_mean', 0)*100:.1f}% ± {rf_metrics.get('roc_auc_std', 0)*100:.1f}%",
+            ],
+            "CNN (Held-Out Test)": [
+                f"{test_metrics.get('accuracy', 0)*100:.1f}%",
+                f"{test_metrics.get('balanced_accuracy', 0)*100:.1f}%",
+                f"{test_metrics.get('precision_pd', 0)*100:.1f}%",
+                f"{test_metrics.get('recall_pd', 0)*100:.1f}%",
+                f"{test_metrics.get('f1_pd', 0)*100:.1f}%",
+                f"{test_metrics.get('roc_auc', 0)*100:.1f}%",
+            ],
+        }
+        import pandas as pd
+        st.dataframe(pd.DataFrame(summary_data), width="stretch", hide_index=True)
+
+        # Protocol reminder
+        st.info("""
+        **Protocol Reminder**: RF uses stratified 5-fold cross-validation on all 249 images.
+        CNN uses a single held-out test set of 38 images (15% split) with pretrained ImageNet weights.
+        These are descriptive results from different evaluation protocols — not a controlled head-to-head comparison.
+        """)
+
+        # CNN-specific details
+        st.markdown("### CNN Training Details")
+        col_c1, col_c2, col_c3 = st.columns(3)
+        with col_c1:
+            st.metric("Best Epoch", "13")
+            st.metric("Test Accuracy", f"{test_metrics.get('accuracy', 0)*100:.1f}%")
+        with col_c2:
+            st.metric("Test Balanced Acc", f"{test_metrics.get('balanced_accuracy', 0)*100:.1f}%")
+            st.metric("Test ROC-AUC", f"{test_metrics.get('roc_auc', 0)*100:.1f}%")
+        with col_c3:
+            st.metric("Test F1 (PD)", f"{test_metrics.get('f1_pd', 0)*100:.1f}%")
+            st.metric("Test F1 (LPD)", f"{test_metrics.get('f1_lpd', 0)*100:.1f}%")
+
+        # RF feature importance note
+        st.markdown("### RF Model Details (Set A - 9 Features)")
+        st.caption("""
+        The RF model uses 9 handcrafted features: ink_density, centroid_x_norm, centroid_y_norm,
+        active_row_ratio, component_aspect_ratio_mean, component_aspect_ratio_std,
+        stroke_width_mean, stroke_width_median, stroke_width_std.
+        """)
+
     else:
         st.info("Comparison requires both models to be trained and evaluated.")
         if rf_metrics is None:
