@@ -5,8 +5,10 @@ from typing import Dict, Any, Optional, Union
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parents[2]
-CNN_CHECKPOINT_DIR = ROOT / "outputs" / "models" / "cnn" / "checkpoints"
+CNN_CHECKPOINT_DIR = ROOT / "outputs" / "models" / "cnn_combined" / "checkpoints"
 CNN_CHECKPOINT_PATH = CNN_CHECKPOINT_DIR / "best_model.pt"
+# Legacy Mendeley-trained CNN retained for comparison
+CNN_LEGACY_CHECKPOINT_PATH = ROOT / "outputs" / "models" / "cnn" / "checkpoints" / "best_model.pt"
 
 
 def run_rf_inference(

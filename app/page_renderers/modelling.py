@@ -42,9 +42,9 @@ def render_modelling_page():
         st.error(f"⚠️ **CNN model not available.** {cnn_msg}")
         st.info("""
         To enable CNN analysis:
-        1. Ensure the dataset is placed under `data/raw/` with `Potential Dysgraphia/` and `Low Potential Dysgraphia/` folders
-        2. Run training: `python -m src.models.cnn_train --dataset-root data/raw --output-dir outputs/models/cnn`
-        3. The best checkpoint will be saved to `outputs/models/cnn/checkpoints/best_model.pt`
+        1. Place the supplementary dataset under `data/raw/dataset2/Normal and Dysgraphia/`
+        2. Run training: `python -m src.models.cnn_train --dataset-root "data/raw/dataset2/Normal and Dysgraphia/Train" --output-dir outputs/models/cnn_dysgraphia`
+        3. The best checkpoint will be saved to `outputs/models/cnn_dysgraphia/checkpoints/best_model.pt`
         """)
         st.stop()
 

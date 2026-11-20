@@ -26,7 +26,7 @@ from app.components.charts import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-CNN_CHECKPOINT_PATH = ROOT / "outputs" / "models" / "cnn" / "checkpoints" / "best_model.pt"
+CNN_CHECKPOINT_PATH = ROOT / "outputs" / "models" / "cnn_dysgraphia" / "checkpoints" / "best_model.pt"
 
 
 def render_rf_feature_analysis_tab(features_used: dict, all_features: dict, meta: dict):

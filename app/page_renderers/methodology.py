@@ -126,7 +126,11 @@ graphisense/
 │   ├── models/                 # Saved pipelines
 │   │   ├── model_pipeline.joblib       # Random Forest pipeline
 │   │   ├── model_metadata.json         # Random Forest metadata
-│   │   └── cnn/                        # CNN checkpoints
+│   │   └── cnn_dysgraphia/             # CNN checkpoints (new dataset2 model)
+│   │       └── checkpoints/
+│   │           ├── best_model.pt
+│   │       └── evaluation_results.json
+│   │   └── cnn/                        # Legacy Mendeley-trained CNN (retained for comparison)
 │   │       └── checkpoints/
 │   │           ├── best_model.pt
 │   │       └── final_model.pt
@@ -149,8 +153,8 @@ graphisense/
         st.code("outputs/models/model_metadata.json")
     with col2:
         st.markdown("**CNN/ResNet-18**")
-        st.code("outputs/models/cnn/checkpoints/best_model.pt")
-        st.code("outputs/reports/cnn_evaluation/evaluation_results.json")
+        st.code("outputs/models/cnn_dysgraphia/checkpoints/best_model.pt")
+        st.code("outputs/models/cnn_dysgraphia/evaluation_results.json")
 
     st.markdown("### How to Run")
     st.code("""
@@ -162,16 +166,16 @@ pip install -r requirements.txt
 #    ├── Potential Dysgraphia/
 #    └── Low Potential Dysgraphia/
 
-# 3. Generate features & train RF
+# 3. Generate features & train RF (auto-discovers all datasets)
 python -m src.features.build_feature_dataset
 python -m src.features.analyze_features
 python -m src.models.train_evaluate
 
-# 4. Train CNN (optional)
-python -m src.models.cnn_train --dataset-root data/raw --output-dir outputs/models/cnn --epochs 50
+# 4. Train CNN on the supplementary dataset (optional)
+python -m src.models.cnn_train --dataset-root "data/raw/dataset2/Normal and Dysgraphia/Train" --output-dir outputs/models/cnn_dysgraphia --epochs 50
 
 # 5. Evaluate CNN
-python -m src.models.cnn_evaluate --checkpoint outputs/models/cnn/checkpoints/best_model.pt
+python -m src.models.cnn_evaluate --checkpoint outputs/models/cnn_dysgraphia/checkpoints/best_model.pt
 
 # 6. Launch Streamlit app
 streamlit run app/main.py
@@ -181,7 +185,7 @@ streamlit run app/main.py
     st.markdown("""
     - **No participant IDs**: Dataset lacks writer identifiers; image-level splits may overestimate generalization
     - **Static images only**: Cannot measure dynamic properties (pressure, velocity, acceleration)
-    - **CNN evaluation**: Small held-out test set (N=38); metrics have wide confidence intervals
+    - **CNN evaluation**: Held-out test set (N=1,036 from the supplementary dataset, 100% accuracy, best epoch 1); the older Mendeley-trained CNN (N=38 test, epoch 13) is retained at `outputs/models/cnn/` for comparison
     - **Research prototype**: Not validated for clinical use; screening support only
     """)
 
@@ -193,7 +197,7 @@ def render_comparison_page():
     ⚠️ **Evaluation Protocol Difference**
 
     - **Random Forest**: 5-Fold Cross-Validation (N=249) — metrics are cross-validation estimates with standard deviation
-    - **CNN/ResNet-18**: Held-out test split (15% = 38 images) — metrics are single test-set estimates
+    - **CNN/ResNet-18**: Held-out test split (15% = 1,036 images from supplementary dataset) — metrics are single test-set estimates (100% accuracy, best epoch 1)
 
     These evaluation protocols are **not directly comparable**. A fair comparison would require both models to be evaluated on the same held-out test set using the same protocol.
     """)
@@ -201,16 +205,16 @@ def render_comparison_page():
     st.markdown("### Key Dataset Information")
     col_d1, col_d2, col_d3, col_d4 = st.columns(4)
     with col_d1:
-        st.metric("Total Images", "249")
+        st.metric("RF Total Images (Mendeley)", "249")
     with col_d2:
-        st.metric("CNN Training", "174")
+        st.metric("CNN Training (Dataset2)", "6,905")
     with col_d3:
-        st.metric("CNN Validation", "37")
+        st.metric("CNN Validation (Dataset2)", "1,036")
     with col_d4:
-        st.metric("CNN Test", "38")
+        st.metric("CNN Test (Dataset2)", "1,036")
 
-    st.caption("CNN uses pretrained ImageNet weights (ResNet-18). Best checkpoint at Epoch 13. "
-               "RF uses 9 handcrafted features on all 249 images via 5-fold CV.")
+    st.caption("CNN trained on supplementary dataset2 (8,503 total: 6,905 train, 1,036 val, 1,036 test). Best checkpoint at Epoch 1 (100% accuracy). "
+               "RF uses 9 handcrafted features on 249 Mendeley images via 5-fold CV. Legacy CNN (N=38 test, epoch 13) at outputs/models/cnn/.")
 
     st.divider()
 
@@ -230,7 +234,7 @@ def render_comparison_page():
     if rf_metrics is not None and cnn_metrics is not None:
         # Main metrics comparison with protocol-aware charts
         st.markdown("### Performance Comparison (Protocol-Aware)")
-        st.caption("Values shown as percentages. RF includes ±1 std dev from 5-fold CV. CNN is single held-out test (N=38).")
+        st.caption("Values shown as percentages. RF includes ±1 std dev from 5-fold CV. CNN is single held-out test (N=1,036).")
 
         # Accuracy comparison
         st.plotly_chart(
@@ -336,16 +340,16 @@ def render_comparison_page():
 
         # Protocol reminder
         st.info("""
-        **Protocol Reminder**: RF uses stratified 5-fold cross-validation on all 249 images.
-        CNN uses a single held-out test set of 38 images (15% split) with pretrained ImageNet weights.
-        These are descriptive results from different evaluation protocols — not a controlled head-to-head comparison.
+        **Protocol Reminder**: RF uses stratified 5-fold cross-validation on 249 Mendeley images.
+        CNN uses a single held-out test set of 1,036 images from the supplementary dataset2 (15% split).
+        These are descriptive results from different evaluation protocols and different datasets — not a controlled head-to-head comparison.
         """)
 
         # CNN-specific details
-        st.markdown("### CNN Training Details")
+        st.markdown("### CNN Training Details (New Model - Dataset2)")
         col_c1, col_c2, col_c3 = st.columns(3)
         with col_c1:
-            st.metric("Best Epoch", "13")
+            st.metric("Best Epoch", "1")
             st.metric("Test Accuracy", f"{test_metrics.get('accuracy', 0)*100:.1f}%")
         with col_c2:
             st.metric("Test Balanced Acc", f"{test_metrics.get('balanced_accuracy', 0)*100:.1f}%")
@@ -353,6 +357,8 @@ def render_comparison_page():
         with col_c3:
             st.metric("Test F1 (PD)", f"{test_metrics.get('f1_pd', 0)*100:.1f}%")
             st.metric("Test F1 (LPD)", f"{test_metrics.get('f1_lpd', 0)*100:.1f}%")
+
+        st.caption("New CNN model trained on dataset2 (8,503 images). Legacy Mendeley-trained CNN (epoch 13, N=38 test) at outputs/models/cnn/.")
 
         # RF feature importance note
         st.markdown("### RF Model Details (Set A - 9 Features)")

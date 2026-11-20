@@ -39,8 +39,8 @@ from src.models.cnn_inference import CNNInference
 from src.models.cnn_model import load_checkpoint
 
 
-DEFAULT_CHECKPOINT_DIR = _REPO_ROOT / "outputs" / "models" / "cnn"
-DEFAULT_CHECKPOINT_PATH = DEFAULT_CHECKPOINT_DIR / "best_model.pt"
+DEFAULT_CHECKPOINT_DIR = _REPO_ROOT / "outputs" / "models" / "cnn_dysgraphia"
+DEFAULT_CHECKPOINT_PATH = DEFAULT_CHECKPOINT_DIR / "checkpoints" / "best_model.pt"
 
 
 def evaluate_model(
@@ -264,7 +264,7 @@ def run_evaluation_cli(
     if dataset_root is None:
         dataset_root = _REPO_ROOT / "data" / "raw"
     if output_dir is None:
-        output_dir = _REPO_ROOT / "outputs" / "reports" / "cnn_evaluation"
+        output_dir = _REPO_ROOT / "outputs" / "models" / "cnn_dysgraphia"
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

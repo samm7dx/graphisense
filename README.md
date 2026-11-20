@@ -89,12 +89,12 @@ graphisense/
 │   ├── Stepwise-Guided-Notebook.ipynb
 │   └── inference_demo.ipynb
 ├── outputs/
-│   ├── features/                # features.csv (249×29)
+│   ├── features/                # features.csv (18,504×29)
 │   ├── figures/                 # ROC, confusion matrices, feature plots
 │   ├── models/
 │   │   ├── model_pipeline.joblib
 │   │   ├── model_metadata.json
-│   │   └── cnn/checkpoints/best_model.pt
+│   │   └── cnn_combined/checkpoints/best_model.pt
 │   └── reports/                 # Markdown evaluation reports
 ├── src/
 │   ├── features/                # Static feature extraction
@@ -198,12 +198,12 @@ python -m pip install -r requirements.txt
 # 3. Download dataset from Mendeley Data (DOI: 10.17632/39hr8dx76p.1)
 #    Extract so class folders sit directly under data\raw\
 
-# 4. Train Random Forest
+# 4. Train Random Forest (auto-discovers class folders under data/raw/)
 python -m src.features.build_feature_dataset
 python -m src.models.train_evaluate
 
-# 5. (Optional) Train CNN
-python -m src.models.cnn_train --dataset-root data/raw --output-dir outputs/models/cnn --epochs 50
+# 5. (Optional) Train CNN on the full consolidated dataset
+python -m src.models.cnn_train --dataset-root "data/raw" --output-dir outputs/models/cnn_combined --epochs 50
 
 # 6. Launch app
 python -m streamlit run app/main.py
@@ -241,19 +241,19 @@ Requirements include PyTorch/Torchvision (CPU by default). For CUDA, install fro
 
 ### Dataset Placement
 
-Download the [Mendeley Potential Dysgraphia Handwriting Dataset](https://data.mendeley.com/datasets/39hr8dx76p/1) and extract so the structure is:
+The consolidated dataset lives under `data\raw\` with two class folders:
 
 ```text
 data\raw\
-├── Potential Dysgraphia\
-│   ├── PD (1).jpg
+├── Potential Dysgraphia\        # 9,231 PD images
+│   ├── dys_000001.png
 │   └── ...
-└── Low Potential Dysgraphia\
-    ├── LPD (1).jpg
+└── Low Potential Dysgraphia\    # 9,273 LPD images
+    ├── nrm_000001.png
     └── ...
 ```
 
-The `data\raw` directory is git-ignored — do not commit dataset files.
+The `data\raw` directory is git-ignored — do not commit dataset files. Images are sourced from the Mendeley dataset and three supplementary collections (see [Dataset Attribution](#dataset-attribution)); filenames are prefixed by source (`dys_`, `nrm_`, `ds3_`, `ds4_`).
 
 ---
 
@@ -313,9 +313,38 @@ Both return: `predicted_label`, `class_probabilities`, `model_metadata`, and a n
 
 ## Dataset Attribution
 
+### Primary Dataset
+
 - **Source**: Mendeley Data, *Potential Dysgraphia Handwriting Dataset of School-Age Children*, Ramlan et al. (Oct 2023), DOI: [10.17632/39hr8dx76p.1](https://data.mendeley.com/datasets/39hr8dx76p/1)
 - **License**: Follow the provider's terms and attribution requirements
 - **Placement**: Class folders under `data\raw\` as shown above
+- **Size**: 18,504 images total (9,231 Potential Dysgraphia, 9,273 Low Potential Dysgraphia) — consolidated from four sources into the two class folders above
+
+### Consolidation Sources
+
+All images were merged into the two class folders under `data\raw\` with source-prefixed filenames:
+
+| Source | Description | PD | LPD |
+|--------|-------------|-----|------|
+| Mendeley (primary) | Ramlan et al. (Oct 2023), DOI: `10.17632/39hr8dx76p.1` | 114 | 135 |
+| Dataset 2 | *Normal and Dysgraphia Handwriting Dataset* — 8,503 PNG letter crops (lower_case/a–z, upper_case/A–Z, numbers/0–9), Train/Test split | 8,503 | — |
+| Dataset 3 | 250 supplementary images | 114 | 135 |
+| Dataset 4 | 1,000 supplementary images | 500 | 500 |
+
+> **Attribution note**: Dataset 2 is the dominant source (~92% of samples). Its feature distribution differs substantially from the Mendeley source, and the source folder name is fully correlated with the class label — this is the root cause of the performance limitation described below.
+
+### ⚠️ Current Model Performance
+
+Both the Random Forest and the ResNet-18 CNN are trained on the full consolidated 18,504-image dataset. **However, neither model generalizes across the merged sources:**
+
+| Model | Test Accuracy | Balanced Accuracy | ROC-AUC |
+|-------|:---:|:---:|:---:|
+| Random Forest (9 features) | ~0.50 | ~0.50 | ~0.52 |
+| ResNet-18 CNN | 0.535 | 0.534 | 0.526 |
+
+Both results are at **random-chance level**. The root cause is a dataset-distribution mismatch, not a training or capacity problem: when each source is evaluated in isolation, the Mendeley-only subset reaches **~85% (RF)** and **~95% (CNN)** accuracy, while Dataset 2 alone collapses to ~36%. The combined signal is dominated by Dataset 2's unrelated distribution and becomes unlearnable.
+
+**Practical implication**: the shipped `model_pipeline.joblib` and `best_model.pt` checkpoints are trained on the merged set and are not reliable for screening use. A working model requires restricting training to the Mendeley source only. See `outputs/reports/model_evaluation_report.md` for the full evaluation.
 
 ---
 
@@ -324,11 +353,12 @@ Both return: `predicted_label`, `class_probabilities`, `model_metadata`, and a n
 | Issue | Solution |
 |-------|----------|
 | `ModuleNotFoundError: app.*` | Ensure repo root is on `sys.path` (handled by `app/main.py`) |
-| `CNN model not available` | Train CNN first: `python -m src.models.cnn_train ...` |
+| `CNN model not available` | Train CNN first: `python -m src.models.cnn_train --dataset-root data/raw ...` |
 | `Feature dataset not found` | Run `python -m src.features.build_feature_dataset` |
 | `Port 8501 in use` | Use `streamlit run app/main.py --server.port 8502` |
 | PowerShell script execution blocked | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
 | `raw_image1.jpeg` missing | File is in `data/raw/` — do not delete |
+| `dataset2/` folder not found | Consolidation is complete — all images now live under `data/raw/Potential Dysgraphia/` and `data/raw/Low Potential Dysgraphia/` |
 | Tests fail with dataset errors | Expected — tests requiring dataset are skipped when unavailable |
 
 ---
@@ -374,4 +404,4 @@ python -m pytest tests/test_inference.py -v
 
 This project is an **academic research prototype** for screening support only. It does not provide medical, clinical, psychiatric, or educational diagnoses. Raw handwriting images and generated outputs are excluded from Git by `.gitignore`.
 
-**Dataset**: Mendeley Data (DOI: 10.17632/39hr8dx76p.1) — follow provider's license.
+**Dataset**: Mendeley Data (DOI: 10.17632/39hr8dx76p.1) — follow provider's license. Supplementary dataset: *Normal and Dysgraphia Handwriting Dataset* — follow provider's license.

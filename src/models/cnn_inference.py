@@ -24,8 +24,8 @@ from src.models.cnn_model import (
 )
 
 
-DEFAULT_CHECKPOINT_DIR = _REPO_ROOT / "outputs" / "models" / "cnn"
-DEFAULT_CHECKPOINT_PATH = DEFAULT_CHECKPOINT_DIR / "best_model.pt"
+DEFAULT_CHECKPOINT_DIR = _REPO_ROOT / "outputs" / "models" / "cnn_dysgraphia"
+DEFAULT_CHECKPOINT_PATH = DEFAULT_CHECKPOINT_DIR / "checkpoints" / "best_model.pt"
 
 # Class mapping must match training
 CLASS_MAPPING = {"0": "LPD", "1": "PD"}

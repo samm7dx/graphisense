@@ -30,3 +30,6 @@ outputs/
 # Secrets
 .env
 .env.*
+
+# Local research paper workspace
+/research_paper/

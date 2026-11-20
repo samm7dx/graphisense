@@ -23,6 +23,10 @@ from src.features.handwriting_features import extract_handwriting_features
 CLASS_MAPPING = {
     "Potential Dysgraphia": "PD",
     "Low Potential Dysgraphia": "LPD",
+    "Dysgraphia": "PD",
+    "Normal": "LPD",
+    "PD": "PD",
+    "LPD": "LPD",
 }
 SUPPORTED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
@@ -64,16 +68,81 @@ def build_feature_table(
     if not ds_path.is_dir():
         raise NotADirectoryError(f"Dataset root is not a directory: {ds_path}")
 
-    missing_folders = [
-        folder_name
-        for folder_name in CLASS_MAPPING
-        if not (ds_path / folder_name).is_dir()
+    # Define valid class folder pairs (each pair represents one dataset type)
+    CLASS_PAIRS = [
+        ("Potential Dysgraphia", "Low Potential Dysgraphia"),  # Mendeley
+        ("Dysgraphia", "Normal"),  # Normal and Dysgraphia dataset
+        ("PD", "LPD"),  # dataset3 / alternative naming
     ]
-    if missing_folders:
+
+    # Find all valid dataset roots under ds_path
+    dataset_roots = []
+
+    # Check direct class folders under ds_path
+    for folder_name, sibling_name in CLASS_PAIRS:
+        folder_path = ds_path / folder_name
+        sibling_path = ds_path / sibling_name
+        if folder_path.exists() and folder_path.is_dir() and sibling_path.exists() and sibling_path.is_dir():
+            # Check if both have supported images
+            has_images = False
+            for cls_folder in [folder_path, sibling_path]:
+                images = list(cls_folder.rglob("*"))
+                if any(f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS and f.is_file() for f in images):
+                    has_images = True
+                    break
+            if has_images:
+                dataset_roots.append((ds_path, (folder_name, sibling_name)))
+
+    # Search for nested dataset structures
+    for folder_name, sibling_name in CLASS_PAIRS:
+        matches = list(ds_path.rglob(folder_name))
+        for match in matches:
+            if match.is_dir():
+                parent = match.parent
+                sibling = parent / sibling_name
+                if sibling.is_dir():
+                    # Check if both have supported images (recursively)
+                    has_images = False
+                    for cls_folder in [match, sibling]:
+                        images = list(cls_folder.rglob("*"))
+                        if any(f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS and f.is_file() for f in images):
+                            has_images = True
+                            break
+                    if has_images:
+                        # Check if this parent is already in dataset_roots
+                        if not any(parent == dr[0] for dr in dataset_roots):
+                            dataset_roots.append((parent, (folder_name, sibling_name)))
+
+    if not dataset_roots:
+        expected_pairs = " or ".join([f"'{a}'/'{b}'" for a, b in CLASS_PAIRS])
         raise FileNotFoundError(
-            f"Dataset class folders missing under {ds_path}: {missing_folders}. "
-            "Place both 'Potential Dysgraphia' and 'Low Potential Dysgraphia' "
-            "folders directly in the dataset root."
+            f"No valid dataset found under {ds_path}. "
+            f"Expected class folder pairs: {expected_pairs} "
+            f"directly under root or nested within a subdirectory."
+        )
+
+    # Build class_folder_map from all found dataset roots
+    class_folder_map = {}  # folder_name -> list of Paths (for combining)
+    for search_root, detected_pair in dataset_roots:
+        for folder_name in detected_pair:
+            folder_path = search_root / folder_name
+            if folder_path.exists() and folder_path.is_dir():
+                if folder_name not in class_folder_map:
+                    class_folder_map[folder_name] = []
+                class_folder_map[folder_name].append(folder_path)
+
+    # Check if any required class folders are still missing (must have at least one for PD and one for LPD)
+    has_pd = "Potential Dysgraphia" in class_folder_map or "Dysgraphia" in class_folder_map
+    has_lpd = "Low Potential Dysgraphia" in class_folder_map or "Normal" in class_folder_map
+    if not (has_pd and has_lpd):
+        missing = []
+        if not has_pd:
+            missing.append("Potential Dysgraphia or Dysgraphia")
+        if not has_lpd:
+            missing.append("Low Potential Dysgraphia or Normal")
+        raise FileNotFoundError(
+            f"Dataset class folders missing under {ds_path}: {missing}. "
+            "Need at least one PD class and one LPD class."
         )
 
     # Ensure parent output directory exists
@@ -83,46 +152,48 @@ def build_feature_table(
 
     # Iterate through class folders deterministically
     for folder_name, label in CLASS_MAPPING.items():
-        folder_path = ds_path / folder_name
-        image_files = sorted(
-            [
-                f
-                for f in folder_path.iterdir()
-                if f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
-                if f.is_file()
-            ],
-            key=lambda p: p.name,
-        )
-        if not image_files:
-            raise FileNotFoundError(
-                f"No supported handwriting images found in {folder_path}. "
-                f"Expected one of: {sorted(SUPPORTED_IMAGE_EXTENSIONS)}"
+        folder_paths = class_folder_map.get(folder_name, [])
+        if not folder_paths:
+            # This class folder name not found in any dataset - skip
+            continue
+
+        for folder_path in folder_paths:
+            image_files = sorted(
+                [
+                    f
+                    for f in folder_path.rglob("*")
+                    if f.suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+                    if f.is_file()
+                ],
+                key=lambda p: p.name,
             )
+            if not image_files:
+                continue
 
-        for img_path in image_files:
-            rel_path = img_path.relative_to(root_path).as_posix()
-            row: Dict[str, Any] = {
-                "filename": img_path.name,
-                "class_label": label,
-                "image_path": rel_path,
-                "status": "SUCCESS",
-            }
+            for img_path in image_files:
+                rel_path = img_path.relative_to(root_path).as_posix()
+                row: Dict[str, Any] = {
+                    "filename": img_path.name,
+                    "class_label": label,
+                    "image_path": rel_path,
+                    "status": "SUCCESS",
+                }
 
-            try:
-                # Load as grayscale
-                img = load_image(img_path, as_gray=True)
-                # Extract features with dark background polarity (dataset verified)
-                feats = extract_handwriting_features(
-                    img,
-                    is_binary=False,
-                    min_component_area=min_component_area,
-                    binarize_kwargs={"method": "otsu", "polarity": "dark_background"},
-                )
-                row.update(feats)
-            except Exception as exc:
-                row["status"] = f"FAILED: {type(exc).__name__}: {str(exc)}"
+                try:
+                    # Load as grayscale
+                    img = load_image(img_path, as_gray=True)
+                    # Extract features with dark background polarity (dataset verified)
+                    feats = extract_handwriting_features(
+                        img,
+                        is_binary=False,
+                        min_component_area=min_component_area,
+                        binarize_kwargs={"method": "otsu", "polarity": "dark_background"},
+                    )
+                    row.update(feats)
+                except Exception as exc:
+                    row["status"] = f"FAILED: {type(exc).__name__}: {str(exc)}"
 
-            rows.append(row)
+                rows.append(row)
 
     if not rows:
         raise RuntimeError(f"No images found to process in {ds_path}")

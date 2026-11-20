@@ -28,3 +28,27 @@ Get-ChildItem -Path $datasetRoot
 If the ZIP contains an additional enclosing directory, move the two class folders
 directly into `$datasetRoot`. The raw dataset directory is excluded from Git; do
 not commit the downloaded images.
+
+---
+
+## Additional Datasets
+
+GraphiSense also integrates a second handwriting dataset to expand training data.
+Place it under `data\raw\dataset2\` with this structure:
+
+```text
+data\raw\dataset2\
+└── Normal and Dysgraphia\
+    ├── Train\
+    │   ├── Dysgraphia\      # letter crops labelled PD
+    │   └── Normal\          # letter crops labelled LPD
+    └── Test\
+        ├── Dysgraphia\
+        └── Normal\
+```
+
+The feature-extraction and CNN pipelines discover both datasets automatically via
+their class-folder naming conventions (`Potential Dysgraphia`/`Low Potential
+Dysgraphia` for Mendeley, `Dysgraphia`/`Normal` for the second dataset). Only the
+`Train` split of the second dataset is used for training; the `Test` split is
+reserved for independent evaluation.

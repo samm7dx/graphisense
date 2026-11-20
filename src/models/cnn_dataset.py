@@ -24,9 +24,14 @@ from src.preprocessing.image_loader import load_image
 DEFAULT_DATASET_ROOT = _REPO_ROOT / "data" / "raw"
 
 # Class mapping: folder name -> class index
+# Supports multiple dataset naming conventions
 CLASS_TO_IDX = {
-    "Potential Dysgraphia": 1,  # PD
-    "Low Potential Dysgraphia": 0,  # LPD
+    "Potential Dysgraphia": 1,  # PD (Mendeley dataset)
+    "Low Potential Dysgraphia": 0,  # LPD (Mendeley dataset)
+    "Dysgraphia": 1,  # PD (Normal and Dysgraphia dataset)
+    "Normal": 0,  # LPD (Normal and Dysgraphia dataset)
+    "PD": 1,  # PD (dataset3)
+    "LPD": 0,  # LPD (dataset3)
 }
 
 IDX_TO_CLASS = {v: k for k, v in CLASS_TO_IDX.items()}
@@ -41,29 +46,38 @@ SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp
 
 def _find_candidate_dataset_roots(root: Path) -> List[Path]:
     """Find all directories under root that contain the expected class folders.
-    
-    Returns a list of paths that contain both 'Potential Dysgraphia' and 
-    'Low Potential Dysgraphia' subdirectories with images.
+
+    Returns a list of paths that contain valid class folder pairs with images.
+    Supports multiple dataset naming conventions:
+    - "Potential Dysgraphia" / "Low Potential Dysgraphia" (Mendeley)
+    - "Dysgraphia" / "Normal" (Normal and Dysgraphia dataset)
     """
     candidates = []
-    for folder_name in CLASS_TO_IDX.keys():
+
+    # Define valid class folder pairs (each pair represents one dataset type)
+    CLASS_PAIRS = [
+        ("Potential Dysgraphia", "Low Potential Dysgraphia"),  # Mendeley
+        ("Dysgraphia", "Normal"),  # Normal and Dysgraphia dataset
+        ("PD", "LPD"),  # dataset3
+    ]
+
+    for folder_name, sibling_name in CLASS_PAIRS:
         matches = list(root.rglob(folder_name))
         for match in matches:
             if match.is_dir():
-                # Check if sibling class folder exists
                 parent = match.parent
-                sibling_name = [n for n in CLASS_TO_IDX.keys() if n != folder_name][0]
                 sibling = parent / sibling_name
                 if sibling.is_dir():
-                    # Check if both have supported images
+                    # Check if both have supported images (recursively)
                     has_images = False
                     for cls_folder in [match, sibling]:
-                        images = list(cls_folder.iterdir())
+                        images = list(cls_folder.rglob("*"))
                         if any(f.suffix.lower() in SUPPORTED_EXTENSIONS and f.is_file() for f in images):
                             has_images = True
                             break
                     if has_images:
                         candidates.append(parent)
+
     # Deduplicate
     unique_candidates = []
     for c in candidates:
@@ -80,6 +94,10 @@ def discover_dataset(
     Supports two dataset structures:
     1. Class folders directly under dataset_root (e.g., data/raw/Potential Dysgraphia/)
     2. Class folders nested under a subdirectory (e.g., data/raw/handwriting/extracted/DATASET DYSGRAPHIA HANDWRITING/)
+
+    Supported class folder naming conventions:
+    - "Potential Dysgraphia" / "Low Potential Dysgraphia" (Mendeley dataset)
+    - "Dysgraphia" / "Normal" (Normal and Dysgraphia dataset)
 
     Args:
         dataset_root: Root directory to search for class subdirectories.
@@ -98,32 +116,42 @@ def discover_dataset(
     if not root.is_dir():
         raise NotADirectoryError(f"Dataset root is not a directory: {root}")
 
-    # First, try direct class folders under root
-    direct_found = True
-    for folder_name in CLASS_TO_IDX.keys():
-        folder_path = root / folder_name
-        if not folder_path.exists() or not folder_path.is_dir():
-            direct_found = False
-            break
-        # Check if it has any supported images
-        images = list(folder_path.iterdir())
-        if not any(f.suffix.lower() in SUPPORTED_EXTENSIONS and f.is_file() for f in images):
-            direct_found = False
-            break
+    # Define valid class folder pairs (each pair represents one dataset type)
+    CLASS_PAIRS = [
+        ("Potential Dysgraphia", "Low Potential Dysgraphia"),  # Mendeley
+        ("Dysgraphia", "Normal"),  # Normal and Dysgraphia dataset
+        ("PD", "LPD"),  # dataset3
+    ]
 
-    if direct_found:
-        search_root = root
-    else:
+    # First, try direct class folders under root (check each known pair)
+    search_root = None
+    for folder_name, sibling_name in CLASS_PAIRS:
+        folder_path = root / folder_name
+        sibling_path = root / sibling_name
+        if folder_path.exists() and folder_path.is_dir() and sibling_path.exists() and sibling_path.is_dir():
+            # Check if both have supported images
+            has_images = False
+            for cls_folder in [folder_path, sibling_path]:
+                images = list(cls_folder.iterdir())
+                if any(f.suffix.lower() in SUPPORTED_EXTENSIONS and f.is_file() for f in images):
+                    has_images = True
+                    break
+            if has_images:
+                search_root = root
+                break
+
+    if search_root is None:
         # Search for nested dataset structures
         candidates = _find_candidate_dataset_roots(root)
-        
+
         if not candidates:
+            expected_pairs = " or ".join([f"'{a}'/'{b}'" for a, b in CLASS_PAIRS])
             raise FileNotFoundError(
                 f"No valid dataset found under {root}. "
-                f"Expected class folders: {list(CLASS_TO_IDX.keys())} "
+                f"Expected class folder pairs: {expected_pairs} "
                 f"directly under root or nested within a subdirectory."
             )
-        
+
         if len(candidates) > 1:
             # Multiple candidates - report and require explicit selection
             candidate_strs = "\n  ".join(str(c.relative_to(root)) for c in candidates)
@@ -132,24 +160,43 @@ def discover_dataset(
                 f"Please specify the exact dataset root path (e.g., "
                 f"'data/raw/handwriting/extracted/DATASET DYSGRAPHIA HANDWRITING')."
             )
-        
+
         search_root = candidates[0]
 
     image_paths = []
     labels = []
 
+    # Determine which class pair is present in the search_root
+    detected_pair = None
+    for folder_name, sibling_name in CLASS_PAIRS:
+        if (search_root / folder_name).exists() and (search_root / sibling_name).exists():
+            detected_pair = (folder_name, sibling_name)
+            break
+
+    if detected_pair is None:
+        expected_pairs = " or ".join([f"'{a}'/'{b}'" for a, b in CLASS_PAIRS])
+        raise FileNotFoundError(
+            f"No valid class folders found in {search_root}. "
+            f"Expected one of: {expected_pairs}"
+        )
+
     for folder_name, class_idx in CLASS_TO_IDX.items():
+        # Only process folders that are part of the detected pair
+        if folder_name not in detected_pair:
+            continue
+
         folder_path = search_root / folder_name
         if not folder_path.exists():
             raise FileNotFoundError(
                 f"Class directory not found: {folder_path}. "
-                f"Expected class folders: {list(CLASS_TO_IDX.keys())}"
+                f"Expected class folders for this dataset: {list(detected_pair)}"
             )
         if not folder_path.is_dir():
             raise NotADirectoryError(f"Class path is not a directory: {folder_path}")
 
+        # Recursively find all supported images within the class folder
         folder_images = sorted([
-            f for f in folder_path.iterdir()
+            f for f in folder_path.rglob("*")
             if f.suffix.lower() in SUPPORTED_EXTENSIONS and f.is_file()
         ])
 

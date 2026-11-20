@@ -8,7 +8,7 @@ import json
 ROOT = Path(__file__).resolve().parents[2]
 
 RF_METRICS_CSV = ROOT / "outputs" / "reports" / "model_evaluation_metrics.csv"
-CNN_EVAL_JSON = ROOT / "outputs" / "reports" / "cnn_evaluation" / "evaluation_results.json"
+CNN_EVAL_JSON = ROOT / "outputs" / "models" / "cnn_combined" / "evaluation_results.json"
 
 
 def load_rf_metrics() -> Optional[pd.DataFrame]:
